@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot } from '../types';
-import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconClock, useToast } from '../ui';
+import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconClock, IconExpand, IconShrink, useToast } from '../ui';
 
 interface Props {
   state: AppState;
@@ -460,8 +460,24 @@ function LivePreview({ body, portrait, onEditCommit }: { body: Partial<Timetable
   const [err, setErr] = useState(false);
   const [spots, setSpots] = useState<Hotspot[]>([]);
   const [active, setActive] = useState<{ id: string; value: string } | null>(null);
+  const [full, setFull] = useState(false);
   const urlRef = useRef<string | null>(null);
   const key = JSON.stringify(body);
+
+  // While full-screen, swallow Escape (exit full) before the modal sees it — unless
+  // an inline edit is open, in which case let the input cancel itself first.
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !active) {
+        e.stopPropagation();
+        e.preventDefault();
+        setFull(false);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [full, active]);
 
   useEffect(() => {
     let alive = true;
@@ -501,8 +517,8 @@ function LivePreview({ body, portrait, onEditCommit }: { body: Partial<Timetable
   };
   const activeSpot = active ? spots.find((s) => s.id === active.id) : null;
 
-  return (
-    <div className={`studio-canvas${portrait ? ' studio-canvas--portrait' : ''}`}>
+  const canvas = (
+    <div className={`studio-canvas${portrait ? ' studio-canvas--portrait' : ''}${full ? ' studio-canvas--full' : ''}`}>
       {url && <img src={url} alt="Live preview of the timetable" className="studio-canvas__img" />}
       {!url && !err && <div className="studio-canvas__overlay"><Spinner /></div>}
       {err && <div className="studio-canvas__overlay"><span className="muted">Preview unavailable.</span></div>}
@@ -533,8 +549,26 @@ function LivePreview({ body, portrait, onEditCommit }: { body: Partial<Timetable
           }}
         />
       )}
+      <button
+        type="button"
+        className="canvas-expand"
+        onClick={() => setFull((v) => !v)}
+        title={full ? 'Exit full screen' : 'Full screen'}
+        aria-label={full ? 'Exit full screen' : 'Full screen'}
+      >
+        {full ? <IconShrink size={16} /> : <IconExpand size={16} />}
+      </button>
     </div>
   );
+
+  if (full) {
+    return (
+      <div className="studio-full" onClick={(e) => { if (e.target === e.currentTarget) setFull(false); }}>
+        {canvas}
+      </div>
+    );
+  }
+  return canvas;
 }
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {

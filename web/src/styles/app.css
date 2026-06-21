@@ -53,6 +53,32 @@ h1, h2, h3, p { margin: 0; }
 }
 .brand { display: flex; align-items: center; gap: 0.6rem; color: var(--color-primary); font-weight: 700; }
 .brand b { color: var(--color-ink); font-family: var(--font-display); letter-spacing: -0.01em; }
+
+/* ── Top-right account/profile menu ─────────────────────────────────────── */
+.profile { position: relative; flex-shrink: 0; }
+.profile-btn {
+  width: 2.4rem; height: 2.4rem; border-radius: 999px; border: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--color-ink-muted); cursor: pointer;
+  transition: color var(--dur-micro) ease, transform var(--dur-micro) var(--ease-settle);
+}
+.profile-btn:hover { color: var(--color-ink); }
+.profile-btn:active { transform: scale(0.94); }
+.profile-menu {
+  position: absolute; inset-inline-end: 0; inset-block-start: calc(100% + 0.5rem);
+  min-width: 13.5rem; padding: 0.4rem; border-radius: var(--radius-card); z-index: 60;
+  animation: pop 0.16s var(--ease-settle) both;
+}
+.menu-item {
+  display: flex; align-items: center; gap: 0.65rem; width: 100%; text-align: start;
+  padding: 0.55rem 0.7rem; border: 0; background: transparent; color: var(--color-ink);
+  border-radius: var(--radius-button); font-weight: 600; font-size: 0.9rem; cursor: pointer;
+}
+.menu-item:hover { background: var(--color-surface-hover); }
+.menu-item svg { color: var(--color-ink-muted); flex-shrink: 0; }
+.menu-sep { height: 1px; background: var(--color-border); margin: 0.35rem 0.3rem; }
+.menu-version { padding: 0.3rem 0.7rem 0.4rem; color: var(--color-ink-muted); font-size: 0.78rem; }
+@media (prefers-reduced-motion: reduce) { .profile-menu { animation: none; } }
 .spacer { flex: 1; }
 .page-head { margin-block: 0.25rem 1.25rem; }
 .page-title { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
@@ -277,6 +303,23 @@ h1, h2, h3, p { margin: 0; }
 .studio-canvas--portrait { aspect-ratio: 9 / 16; max-width: 300px; margin-inline: auto; }
 .studio-canvas__img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .studio-canvas__overlay { position: absolute; inset: 0; display: grid; place-items: center; }
+/* Expand-to-full-screen control + the full-screen overlay. */
+.canvas-expand {
+  position: absolute; inset-block-start: 0.5rem; inset-inline-end: 0.5rem; z-index: 4;
+  width: 1.95rem; height: 1.95rem; border-radius: 9px; border: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.4); color: #fff; opacity: 0.7;
+  transition: opacity var(--dur-micro) ease;
+}
+.canvas-expand:hover { opacity: 1; }
+.studio-full {
+  position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 2vmin;
+  background: rgba(0,0,0,0.78); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  animation: fade 0.18s ease both;
+}
+.studio-canvas--full { width: auto; height: 90vh; max-width: 96vw; }
+.studio-canvas--full.studio-canvas--portrait { width: auto; height: 92vh; max-width: 96vw; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .studio-full { animation: none; } }
 /* Click-to-edit hotspots over the live preview image. */
 .studio-canvas .hot {
   position: absolute; margin: 0; padding: 0; border: 0; background: transparent;

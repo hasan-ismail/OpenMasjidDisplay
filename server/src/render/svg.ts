@@ -375,19 +375,19 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
       <stop offset="100%" stop-color="${hexToRgba(p.primary, 0)}"/>
     </radialGradient>
     <radialGradient id="suncorona" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="${hexToRgba('#fff4cf', 0.55)}"/>
-      <stop offset="30%" stop-color="${hexToRgba('#ffd98a', 0.32)}"/>
-      <stop offset="62%" stop-color="${hexToRgba('#ffb74d', 0.12)}"/>
-      <stop offset="100%" stop-color="${hexToRgba('#ffb74d', 0)}"/>
+      <stop offset="0%" stop-color="${hexToRgba('#fff3cc', 0.34)}"/>
+      <stop offset="34%" stop-color="${hexToRgba('#ffd98a', 0.16)}"/>
+      <stop offset="66%" stop-color="${hexToRgba('#ffc869', 0.05)}"/>
+      <stop offset="100%" stop-color="${hexToRgba('#ffc869', 0)}"/>
     </radialGradient>
     <radialGradient id="sun" cx="50%" cy="48%" r="50%">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="42%" stop-color="#fff1c2"/>
-      <stop offset="78%" stop-color="#ffd97a"/>
-      <stop offset="100%" stop-color="#ffc24d"/>
+      <stop offset="0%" stop-color="#fff7db"/>
+      <stop offset="48%" stop-color="#ffe7a3"/>
+      <stop offset="82%" stop-color="#ffd277"/>
+      <stop offset="100%" stop-color="${hexToRgba('#f6c256', 0.85)}"/>
     </radialGradient>
     <radialGradient id="sunray" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="${hexToRgba('#ffe9b0', 0.5)}"/>
+      <stop offset="0%" stop-color="${hexToRgba('#ffe9b0', 0.35)}"/>
       <stop offset="100%" stop-color="${hexToRgba('#ffe9b0', 0)}"/>
     </radialGradient>
     <radialGradient id="moon" cx="38%" cy="34%" r="68%">
@@ -429,21 +429,20 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
   </defs>`;
 }
 
-/** A soft sunburst: tapered rays radiating from (cx,cy). Edges fade via the
- *  #sunray gradient, so it reads as light, not hard spikes (and stays blur-free). */
+/** A whisper-soft sunburst: thin tapered rays that fade out via the #sunray
+ *  gradient. Kept very subtle (low opacity, short) so it reads as a gentle shimmer,
+ *  not hard spikes. Blur-free, so each video frame stays cheap to rasterize. */
 function sunburst(cx: number, cy: number, r: number): string {
-  const N = 16;
-  const inner = r * 1.15;
-  const out: string[] = [`<g opacity="0.5">`];
+  const N = 12;
+  const inner = r * 1.2;
+  const out: string[] = [`<g opacity="0.16">`];
   for (let i = 0; i < N; i++) {
     const a = (i / N) * Math.PI * 2;
     const long = i % 2 === 0;
-    const len = inner + r * (long ? 2.6 : 1.5);
-    const halfBase = r * 0.16;
-    // tip
+    const len = inner + r * (long ? 1.7 : 1.0);
+    const halfBase = r * 0.09;
     const tx = cx + Math.cos(a) * len;
     const ty = cy + Math.sin(a) * len;
-    // two base points perpendicular to the ray direction
     const px = Math.cos(a + Math.PI / 2);
     const py = Math.sin(a + Math.PI / 2);
     const b1x = cx + Math.cos(a) * inner + px * halfBase;
@@ -451,55 +450,54 @@ function sunburst(cx: number, cy: number, r: number): string {
     const b2x = cx + Math.cos(a) * inner - px * halfBase;
     const b2y = cy + Math.sin(a) * inner - py * halfBase;
     out.push(
-      `<path d="M${b1x.toFixed(1)} ${b1y.toFixed(1)} L${tx.toFixed(1)} ${ty.toFixed(1)} L${b2x.toFixed(1)} ${b2y.toFixed(1)} Z" fill="url(#sunray)" opacity="${long ? 0.7 : 0.45}"/>`,
+      `<path d="M${b1x.toFixed(1)} ${b1y.toFixed(1)} L${tx.toFixed(1)} ${ty.toFixed(1)} L${b2x.toFixed(1)} ${b2y.toFixed(1)} Z" fill="url(#sunray)" opacity="${long ? 1 : 0.6}"/>`,
     );
   }
   out.push(`</g>`);
   return out.join('');
 }
 
-/** The sun (day) or moon (night) — soft edges come from gradient fades, not a blur
- *  filter, so each video frame stays cheap to rasterize. The sun has a warm corona
- *  and a gentle ray burst; both cast light onto the glass via #cglow + #litsheen. */
+/** The sun (day) or moon (night). Soft edges come from gradient fades, not a blur
+ *  filter. The sun is a gentle warm orb with a faint corona + the lightest ray
+ *  shimmer; the glow it casts onto the glass comes from #cglow + #litsheen. */
 function celestialBody(cel: Celestial, W: number, H: number): string {
-  const r = Math.min(W, H) * 0.045;
+  const r = Math.min(W, H) * 0.04;
   const cx = cel.x.toFixed(1);
   const cy = cel.y.toFixed(1);
   if (cel.isDay) {
     return (
-      `<circle cx="${cx}" cy="${cy}" r="${(r * 3.4).toFixed(1)}" fill="url(#suncorona)"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 3.0).toFixed(1)}" fill="url(#suncorona)"/>` +
       sunburst(cel.x, cel.y, r) +
-      `<circle cx="${cx}" cy="${cy}" r="${(r * 1.05).toFixed(1)}" fill="url(#sun)"/>` +
-      `<circle cx="${cx}" cy="${cy}" r="${(r * 0.62).toFixed(1)}" fill="#fffdf4"/>`
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 1.0).toFixed(1)}" fill="url(#sun)"/>`
     );
   }
   return (
     `<circle cx="${cx}" cy="${cy}" r="${(r * 2.6).toFixed(1)}" fill="url(#moonglow)"/>` +
     `<circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="url(#moon)"/>` +
     // a couple of faint craters for a less "fake" moon
-    `<circle cx="${(cel.x - r * 0.3).toFixed(1)}" cy="${(cel.y - r * 0.25).toFixed(1)}" r="${(r * 0.16).toFixed(1)}" fill="rgba(120,135,165,0.25)"/>` +
-    `<circle cx="${(cel.x + r * 0.28).toFixed(1)}" cy="${(cel.y + r * 0.18).toFixed(1)}" r="${(r * 0.12).toFixed(1)}" fill="rgba(120,135,165,0.2)"/>` +
-    `<circle cx="${(cel.x + r * 0.05).toFixed(1)}" cy="${(cel.y + r * 0.4).toFixed(1)}" r="${(r * 0.09).toFixed(1)}" fill="rgba(120,135,165,0.18)"/>`
+    `<circle cx="${(cel.x - r * 0.3).toFixed(1)}" cy="${(cel.y - r * 0.25).toFixed(1)}" r="${(r * 0.16).toFixed(1)}" fill="rgba(120,135,165,0.22)"/>` +
+    `<circle cx="${(cel.x + r * 0.28).toFixed(1)}" cy="${(cel.y + r * 0.18).toFixed(1)}" r="${(r * 0.12).toFixed(1)}" fill="rgba(120,135,165,0.18)"/>` +
+    `<circle cx="${(cel.x + r * 0.05).toFixed(1)}" cy="${(cel.y + r * 0.4).toFixed(1)}" r="${(r * 0.09).toFixed(1)}" fill="rgba(120,135,165,0.16)"/>`
   );
 }
 
-/** Soft light shafts spilling from the sun/moon across the scene, so the light
- *  visibly falls over the glass panels. Very low opacity; no blur. */
+/** Barely-there light shafts spilling from the sun/moon across the scene, so the
+ *  light just softly falls over the glass. Extremely low opacity; no blur. */
 function lightBeams(cel: Celestial, W: number, H: number): string {
   const color = cel.isDay ? '#ffe9b0' : '#c9d6f0';
-  const baseA = cel.isDay ? 0.06 : 0.035;
-  const out: string[] = [`<g opacity="1">`];
-  // three broad beams fanning toward the lower part of the screen
-  const spread = [-0.22, 0.0, 0.26];
+  const baseA = cel.isDay ? 0.022 : 0.014;
+  const out: string[] = [`<g>`];
+  // two soft beams fanning toward the lower part of the screen
+  const spread = [-0.16, 0.2];
   for (let i = 0; i < spread.length; i++) {
     const ang = Math.PI / 2 + spread[i]; // mostly downward
     const len = H * 1.2;
     const tipx = cel.x + Math.cos(ang) * len;
     const tipy = cel.y + Math.sin(ang) * len;
-    const halfBase = Math.min(W, H) * (0.05 + i * 0.01);
+    const halfBase = Math.min(W, H) * 0.04;
     const px = Math.cos(ang + Math.PI / 2) * halfBase;
     const py = Math.sin(ang + Math.PI / 2) * halfBase;
-    const wideEnd = Math.min(W, H) * 0.16;
+    const wideEnd = Math.min(W, H) * 0.13;
     const wx = Math.cos(ang + Math.PI / 2) * wideEnd;
     const wy = Math.sin(ang + Math.PI / 2) * wideEnd;
     out.push(

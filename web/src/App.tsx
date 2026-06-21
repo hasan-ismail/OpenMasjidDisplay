@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAppState } from './state';
 import { api } from './api';
 import { usePrefs, prefsStore, resolveTheme, useOmosAppearanceSync } from './prefs';
@@ -13,8 +13,11 @@ import {
   IconMoon,
   IconSun,
   IconPower,
+  IconUser,
   Spinner,
 } from './ui';
+
+declare const __APP_VERSION__: string;
 import type { AppState } from './types';
 import { Screens } from './routes/Screens';
 import { Timetables } from './routes/Timetables';
@@ -86,19 +89,7 @@ function Splash() {
   );
 }
 
-function Dock({
-  tab,
-  setTab,
-  dark,
-  onToggleTheme,
-  onLogout,
-}: {
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  dark: boolean;
-  onToggleTheme: () => void;
-  onLogout?: () => void;
-}) {
+function Dock({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   return (
     <div className="dock-wrap">
       <nav className="dock glass-raised" aria-label="Sections">
@@ -114,16 +105,75 @@ function Dock({
             <Icon size={20} />
           </button>
         ))}
-        <span className="dock-sep" aria-hidden="true" />
-        <button className="nav-item nav-item--util" onClick={onToggleTheme} aria-label="Toggle light or dark" title="Toggle light or dark">
-          {dark ? <IconSun size={20} /> : <IconMoon size={20} />}
-        </button>
-        {onLogout && (
-          <button className="nav-item nav-item--util" onClick={onLogout} aria-label="Sign out" title="Sign out">
-            <IconPower size={20} />
-          </button>
-        )}
       </nav>
+    </div>
+  );
+}
+
+/** Top-right account menu — theme, settings, version and sign-out (like the
+ *  OpenMasjidOS dashboard's profile button). */
+function ProfileMenu({
+  dark,
+  onToggleTheme,
+  onSettings,
+  onLogout,
+}: {
+  dark: boolean;
+  onToggleTheme: () => void;
+  onSettings: () => void;
+  onLogout?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="profile" ref={ref}>
+      <button
+        className="profile-btn glass-raised"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account and settings"
+        title="Account"
+      >
+        <IconUser size={18} />
+      </button>
+      {open && (
+        <div className="profile-menu glass-raised" role="menu">
+          <button className="menu-item" role="menuitem" onClick={onToggleTheme}>
+            {dark ? <IconSun size={17} /> : <IconMoon size={17} />}
+            <span>{dark ? 'Light mode' : 'Dark mode'}</span>
+          </button>
+          <button className="menu-item" role="menuitem" onClick={() => { onSettings(); setOpen(false); }}>
+            <IconCog size={17} />
+            <span>Settings</span>
+          </button>
+          {onLogout && (
+            <button className="menu-item" role="menuitem" onClick={onLogout}>
+              <IconPower size={17} />
+              <span>Sign out</span>
+            </button>
+          )}
+          <div className="menu-sep" aria-hidden="true" />
+          <div className="menu-version">OpenMasjid Display v{__APP_VERSION__}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -160,6 +210,13 @@ function Shell({
           <MasjidMark size={24} />
           <b>OpenMasjid Display</b>
         </div>
+        <span className="spacer" />
+        <ProfileMenu
+          dark={dark}
+          onToggleTheme={toggleTheme}
+          onSettings={() => setTab('settings')}
+          onLogout={state.authRequired ? logout : undefined}
+        />
       </header>
 
       <main className="main">
@@ -170,13 +227,7 @@ function Shell({
         {tab === 'settings' && <SettingsPage state={state} refetch={refetch} />}
       </main>
 
-      <Dock
-        tab={tab}
-        setTab={setTab}
-        dark={dark}
-        onToggleTheme={toggleTheme}
-        onLogout={state.authRequired ? logout : undefined}
-      />
+      <Dock tab={tab} setTab={setTab} />
     </div>
   );
 }
