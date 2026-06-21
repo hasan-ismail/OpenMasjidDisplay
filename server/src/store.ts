@@ -70,6 +70,19 @@ function seededTimetable(): Timetable {
   };
 }
 
+/** Backfill fields added in later versions onto a stored timetable, so an upgrade
+ *  never silently hides elements that didn't exist as toggles before. */
+function migrateTimetable(t: Timetable): Timetable {
+  return {
+    ...t,
+    layout: t.layout ?? 'centered',
+    showCountdown: t.showCountdown ?? true,
+    showDates: t.showDates ?? true,
+    showLogo: t.showLogo ?? true,
+    backgroundImage: t.backgroundImage ?? '',
+  };
+}
+
 function freshDB(): DB {
   return {
     version: DB_VERSION,
@@ -107,6 +120,7 @@ export class Store {
       if (fs.existsSync(this.file)) {
         const parsed = JSON.parse(fs.readFileSync(this.file, 'utf8')) as DB;
         if (parsed && typeof parsed === 'object' && Array.isArray(parsed.timetables)) {
+          parsed.timetables = parsed.timetables.map(migrateTimetable);
           return { ...freshDB(), ...parsed, version: DB_VERSION };
         }
       }
