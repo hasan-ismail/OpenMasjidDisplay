@@ -16,6 +16,7 @@ import {
   setCookieHeader,
   clearCookieHeader,
 } from './auth';
+import { platformUser, ssoConfigured } from './omos';
 import { THEMES } from './render/theme';
 import { renderDisplaySvg } from './render/svg';
 import { fontOptions } from './render/fonts';
@@ -116,19 +117,25 @@ function statePayload(store: Store, orchestrator: Orchestrator) {
     schedules: db.schedules,
     themes: THEMES,
     statuses: orchestrator.getStatuses(),
+    // The screens connect to rtsp://<this server>:<port>/<screen>. The host is
+    // whatever address the panel was opened with (filled in by the browser), so
+    // there is no server IP to configure here.
     rtsp: {
-      host: s.rtspPublicHost,
-      port: s.rtspPublicPort,
+      port: config.rtspPort,
       transport: 'tcp',
-      base: s.rtspPublicHost ? `rtsp://${s.rtspPublicHost}:${s.rtspPublicPort}` : null,
     },
+    omosBase: config.omosBaseUrl,
     serverNow: Date.now(),
   };
 }
 
 export function createApi(deps: Deps) {
   const { store, orchestrator } = deps;
-  const authed = (req: IncomingMessage) => !!store.db.admin && hasValidSession(req, store.secret);
+  // A request is authenticated if it carries a valid local session cookie. That
+  // cookie is minted by first-run setup, by password login, or by confirmed
+  // OpenMasjidOS SSO (see /api/session) — so every other endpoint stays a simple,
+  // synchronous check.
+  const authed = (req: IncomingMessage) => hasValidSession(req, store.secret);
 
   return async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -140,7 +147,28 @@ export function createApi(deps: Deps) {
       if (pathname === '/healthz') return sendJson(res, 200, { ok: true });
 
       if (pathname === '/api/session' && method === 'GET') {
-        return sendJson(res, 200, { needsSetup: !store.db.admin, authed: authed(req) });
+        let isAuthed = authed(req);
+        let username: string | undefined;
+        // OpenMasjidOS SSO: if not already signed in here but the visitor carries
+        // a platform session the platform confirms, mint a local session so the
+        // rest of the API (and the WebSocket) treats them as signed in. Falls back
+        // silently to local login when SSO is absent or the platform is down.
+        if (!isAuthed && ssoConfigured()) {
+          const user = await platformUser(req);
+          if (user) {
+            res.setHeader('set-cookie', setCookieHeader(makeToken(store.secret)));
+            isAuthed = true;
+            username = user;
+          }
+        }
+        return sendJson(res, 200, {
+          // Standalone: first run creates a password. Under OpenMasjidOS, signing
+          // in happens through the dashboard, so we never block on local setup.
+          needsSetup: !store.db.admin && !ssoConfigured(),
+          authed: isAuthed,
+          hasPassword: !!store.db.admin,
+          sso: { enabled: ssoConfigured(), username },
+        });
       }
       if (pathname === '/api/setup' && method === 'POST') {
         const body = await readBody(req);

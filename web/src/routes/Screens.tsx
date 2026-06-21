@@ -86,15 +86,6 @@ export function Screens({ state, refetch }: Props) {
         </button>
       </div>
 
-      {!state.rtsp.base && (
-        <div className="warn-banner glass">
-          <span style={{ flex: 1 }}>
-            Set this server's network address in <b>Settings</b> so each screen shows a link you can
-            point its decoder at.
-          </span>
-        </div>
-      )}
-
       {state.tvs.length === 0 ? (
         <div className="empty-state glass" style={{ borderRadius: 'var(--radius-card)' }}>
           <div className="empty-art"><MasjidMark size={64} /></div>
@@ -125,7 +116,6 @@ export function Screens({ state, refetch }: Props) {
 
       {edit && (
         <TvModal
-          state={state}
           tv={edit === 'new' ? null : edit}
           options={options}
           onClose={() => setEdit(null)}
@@ -177,7 +167,10 @@ function ScreenCard({
   const [copied, setCopied] = useState(false);
   const effective = status?.effective ?? tv.defaultContent;
   const ready = status?.streamReady ?? false;
-  const url = state.rtsp.base ? `${state.rtsp.base}/${tv.id}` : null;
+  // The link uses whatever address this panel was opened with — the same address
+  // a decoder on the network reaches this server at. Nothing to configure.
+  const url = `rtsp://${location.hostname}:${state.rtsp.port}/${tv.id}`;
+  const localHost = /^(localhost|127\.|0\.0\.0\.0|::1|\[)/.test(location.hostname);
   const sourceTag =
     status?.source === 'override' ? 'Manual' : status?.source === 'schedule' ? 'Scheduled' : 'Default';
 
@@ -207,35 +200,35 @@ function ScreenCard({
         </button>
       )}
 
-      {url ? (
-        <div className="rtsp-box">
-          <span className="rtsp-url" title={url}>{url}</span>
-          <button
-            className="btn btn--ghost btn--sm"
-            onClick={() => {
-              onCopy(url);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-          >
-            {copied ? <IconCheck size={14} /> : <IconCopy size={14} />} {copied ? 'Copied' : 'Copy link'}
-          </button>
+      <div className="rtsp-box">
+        <span className="rtsp-url" title={url}>{url}</span>
+        <button
+          className="btn btn--ghost btn--sm"
+          onClick={() => {
+            onCopy(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? <IconCheck size={14} /> : <IconCopy size={14} />} {copied ? 'Copied' : 'Copy link'}
+        </button>
+      </div>
+      {localHost && (
+        <div className="hint">
+          You're viewing this on the server itself — open this panel from another device using this
+          server's network address, and the link will use that address for your screens.
         </div>
-      ) : (
-        <div className="hint">Set the server address in Settings to get this screen's link.</div>
       )}
     </div>
   );
 }
 
 function TvModal({
-  state,
   tv,
   options,
   onClose,
   onSaved,
 }: {
-  state: AppState;
   tv: Tv | null;
   options: ReturnType<typeof contentOptions>;
   onClose: () => void;
@@ -280,7 +273,6 @@ function TvModal({
       <Field label="Normally shows" hint="What this screen returns to when no schedule or manual choice applies.">
         <ContentPicker options={options} value={content} onChange={setContent} />
       </Field>
-      {!state.rtsp.base && <p className="hint">Tip: set the server's network address in Settings to get this screen's connection link.</p>}
     </Modal>
   );
 }

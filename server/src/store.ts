@@ -70,8 +70,6 @@ function freshDB(): DB {
     version: DB_VERSION,
     admin: null,
     settings: {
-      rtspPublicHost: config.seed.rtspPublicHost,
-      rtspPublicPort: config.seed.rtspPublicPort,
       defaultQuality: config.seed.quality as Quality,
       scheduleTimezone: config.seed.timezone,
     },

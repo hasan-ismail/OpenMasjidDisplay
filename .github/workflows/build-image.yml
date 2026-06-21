@@ -13,6 +13,12 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # Docs-only changes don't change the image — skip the (slow) multi-arch build.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'screenshots/**'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:

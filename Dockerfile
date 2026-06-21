@@ -5,6 +5,12 @@
 # output); only the runtime stage runs as the TARGET arch, where `npm ci` pulls
 # the correct @resvg/resvg-js native binary for that architecture.
 
+# ---- The RTSP server (MediaMTX) -------------------------------------------
+# Taken from the official multi-arch image, pinned by version. This stage has no
+# --platform override, so it is pulled for the TARGET architecture — the arm64
+# build gets the arm64 binary, the amd64 build gets the amd64 one.
+FROM bluenviron/mediamtx:1.19.1 AS mediamtx
+
 # ---- Build the web control panel (Vite → static files) --------------------
 FROM --platform=$BUILDPLATFORM node:22-slim AS web
 WORKDIR /web
@@ -50,10 +56,15 @@ RUN npm ci --omit=dev
 COPY --from=server /server/dist ./dist
 COPY --from=web /web/dist ./public
 
+# The RTSP server runs inside this container too, so a masjid installs and
+# updates exactly one thing. The app launches and supervises it (mediamtxServer.ts).
+COPY --from=mediamtx /mediamtx /usr/local/bin/mediamtx
+COPY docker/mediamtx.yml /app/mediamtx.yml
+
 ENV PORT=8080 \
     DATA_DIR=/data \
     PUBLIC_DIR=/app/public
-EXPOSE 8080
+EXPOSE 8080 8554
 VOLUME ["/data"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]

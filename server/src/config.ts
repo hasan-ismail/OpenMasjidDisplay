@@ -17,17 +17,34 @@ export const config = {
   dataDir: env('DATA_DIR', path.resolve(process.cwd(), 'data')),
   publicDir: env('PUBLIC_DIR', path.resolve(__dirname, '..', 'public')),
 
-  /** How the app talks to MediaMTX on the private compose network. */
+  /** The RTSP port a screen's decoder connects to: rtsp://<host>:<port>/<screen>.
+   *  Published to the host by docker-compose and surfaced to the UI, which builds
+   *  each link from the address the panel was opened with — so there is no server
+   *  IP to configure. Overridable only if the host port is remapped. */
+  rtspPort: intEnv('RTSP_PUBLIC_PORT', 8554),
+
+  /** The RTSP server (MediaMTX) runs inside THIS container — one thing to install
+   *  and update. We launch and supervise it (see mediamtxServer.ts). Set
+   *  MEDIAMTX_MANAGED=no for local dev where you run your own MediaMTX. */
+  mediamtxManaged: env('MEDIAMTX_MANAGED', 'yes') !== 'no',
+  mediamtxBin: env('MEDIAMTX_BIN', 'mediamtx'),
+  mediamtxConfig: env('MEDIAMTX_CONFIG', '/app/mediamtx.yml'),
+
+  /** How the app talks to MediaMTX (loopback — same container). */
   mediamtxApiUrl: env('MEDIAMTX_API_URL', 'http://127.0.0.1:9997'),
   /** Where the app PUBLISHES rendered timetables (app -> mediamtx). */
   rtspInternal: env('MEDIAMTX_RTSP_INTERNAL', 'rtsp://127.0.0.1:8554'),
   /** What MediaMTX uses to pull from ITSELF for per-TV self-relay paths. */
   rtspLoopback: env('MEDIAMTX_RTSP_LOOPBACK', 'rtsp://127.0.0.1:8554'),
 
+  /** OpenMasjidOS platform integration (injected by the platform at install;
+   *  empty on a standalone install). Enables appearance inheritance and shared
+   *  sign-on with the dashboard. See docs/PLATFORM_INTEGRATION.md. */
+  omosBaseUrl: env('OPENMASJID_BASE_URL', '').replace(/\/+$/, ''),
+  omosAppId: env('OPENMASJID_APP_ID', ''),
+
   /** First-run seed values (from install settings). */
   seed: {
-    rtspPublicHost: env('RTSP_PUBLIC_HOST', ''),
-    rtspPublicPort: intEnv('RTSP_PUBLIC_PORT', 8554),
     quality: (env('DISPLAY_QUALITY', '720p') === '1080p' ? '1080p' : '720p') as Quality,
     masjidName: env('MASJID_NAME', 'Our Masjid'),
     latitude: env('LATITUDE', ''),

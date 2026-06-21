@@ -82,8 +82,6 @@ export interface ScheduleRule {
 }
 
 export interface Settings {
-  rtspPublicHost: string;
-  rtspPublicPort: number;
   defaultQuality: Quality;
   scheduleTimezone: string;
 }
@@ -111,6 +109,9 @@ export interface AppState {
   schedules: ScheduleRule[];
   themes: ThemePreset[];
   statuses: TvStatus[];
-  rtsp: { host: string; port: number; transport: string; base: string | null };
+  /** The screen-facing RTSP port. The link's host is filled in by the browser. */
+  rtsp: { port: number; transport: string };
+  /** OpenMasjidOS base URL when running under the platform, else '' (for A2 sync). */
+  omosBase: string;
   serverNow: number;
 }

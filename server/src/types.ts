@@ -110,9 +110,6 @@ export interface ScheduleRule {
 }
 
 export interface Settings {
-  /** the server's LAN address the TV decoders connect to */
-  rtspPublicHost: string;
-  rtspPublicPort: number;
   defaultQuality: Quality;
   /** IANA timezone used to evaluate schedules ('' = server zone) */
   scheduleTimezone: string;

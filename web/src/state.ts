@@ -4,8 +4,12 @@ import type { AppState, TvStatus } from './types';
 
 export interface UseApp {
   state: AppState | null;
-  needAuth: boolean;
-  needsSetup: boolean;
+  /** signed in (locally or via OpenMasjidOS SSO) */
+  authed: boolean;
+  /** whether a local control-panel password has been set */
+  hasPassword: boolean;
+  /** whether OpenMasjidOS sign-on is available for this install */
+  ssoEnabled: boolean;
   loading: boolean;
   refetch: () => Promise<void>;
   onAuthed: () => void;
@@ -13,39 +17,52 @@ export interface UseApp {
 
 export function useAppState(): UseApp {
   const [state, setState] = useState<AppState | null>(null);
-  const [needAuth, setNeedAuth] = useState(false);
-  const [needsSetup, setNeedsSetup] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
     try {
       const s = await api.state();
       setState(s);
-      setNeedAuth(false);
+      setAuthed(true);
     } catch {
-      /* 401 handled by the unauth handler */
+      /* 401 → handled by the unauth handler (re-checks the session) */
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    setUnauthHandler(async () => {
-      try {
-        const s = await api.session();
-        if (s.needsSetup) setNeedsSetup(true);
-        else setNeedAuth(true);
-      } catch {
-        setNeedAuth(true);
+  // Resolve who we are: a local session, OpenMasjidOS SSO (which the server turns
+  // into a local session), or not signed in. Drives which screen shows.
+  const checkSession = useCallback(async () => {
+    try {
+      const s = await api.session();
+      setHasPassword(!!s.hasPassword);
+      setSsoEnabled(!!s.sso?.enabled);
+      if (s.authed) {
+        await refetch();
+        return;
       }
-      setLoading(false);
-    });
-    void refetch();
+      setAuthed(false);
+    } catch {
+      setAuthed(false);
+    }
+    setLoading(false);
   }, [refetch]);
 
-  // Live updates over WebSocket.
   useEffect(() => {
-    if (needAuth || needsSetup) return;
+    setUnauthHandler(() => {
+      setAuthed(false);
+      void checkSession();
+    });
+    void checkSession();
+  }, [checkSession]);
+
+  // Live updates over WebSocket (only while signed in).
+  useEffect(() => {
+    if (!authed) return;
     let closed = false;
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -84,14 +101,12 @@ export function useAppState(): UseApp {
         /* ignore */
       }
     };
-  }, [needAuth, needsSetup, refetch]);
+  }, [authed, refetch]);
 
   const onAuthed = useCallback(() => {
-    setNeedAuth(false);
-    setNeedsSetup(false);
     setLoading(true);
-    void refetch();
-  }, [refetch]);
+    void checkSession();
+  }, [checkSession]);
 
-  return { state, needAuth, needsSetup, loading, refetch, onAuthed };
+  return { state, authed, hasPassword, ssoEnabled, loading, refetch, onAuthed };
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import type { AppState, Settings } from '../types';
 import { Field, IconCheck, useToast } from '../ui';
-import { usePrefs, prefsStore, WALLPAPERS } from '../prefs';
+import { usePrefs, prefsStore, WALLPAPERS, fetchOmosAppearance } from '../prefs';
 
 interface Props {
   state: AppState;
@@ -12,23 +12,18 @@ interface Props {
 export function SettingsPage({ state, refetch }: Props) {
   const toast = useToast();
   const prefs = usePrefs();
-  const [host, setHost] = useState(state.settings.rtspPublicHost);
-  const [port, setPort] = useState(String(state.settings.rtspPublicPort));
   const [quality, setQuality] = useState<Settings['defaultQuality']>(state.settings.defaultQuality);
   const [tz, setTz] = useState(state.settings.scheduleTimezone);
   const [busy, setBusy] = useState(false);
 
-  const base = host.trim() ? `rtsp://${host.trim()}:${port.trim() || '8554'}` : null;
+  // Only "follow" when we actually run under OpenMasjidOS (there's a base URL).
+  const canFollow = !!state.omosBase;
+  const following = canFollow && prefs.followOmos;
 
   const save = async () => {
     setBusy(true);
     try {
-      await api.saveSettings({
-        rtspPublicHost: host.trim(),
-        rtspPublicPort: Number(port) || 8554,
-        defaultQuality: quality,
-        scheduleTimezone: tz.trim(),
-      });
+      await api.saveSettings({ defaultQuality: quality, scheduleTimezone: tz.trim() });
       await refetch();
       toast('Settings saved.');
     } catch (e) {
@@ -42,25 +37,7 @@ export function SettingsPage({ state, refetch }: Props) {
     <div>
       <div className="page-head">
         <h1 className="page-title">Settings</h1>
-        <p className="page-sub">A few details so your screens can find this server.</p>
-      </div>
-
-      <div className="panel glass">
-        <h3 className="section-title" style={{ marginTop: 0 }}>This server's network address</h3>
-        <p className="muted" style={{ marginBottom: '1rem' }}>
-          The address your screens' decoders connect to. Use this computer's IP on your local network.
-        </p>
-        <div className="grid2">
-          <Field label="Address (IP or hostname)" hint="e.g. 192.168.1.50"><input className="input" value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.1.50" /></Field>
-          <Field label="Video port" hint="Default 8554"><input className="input" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} /></Field>
-        </div>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={() => setHost(location.hostname)}>
-          Use this device's address ({location.hostname})
-        </button>
-        <p className="hint" style={{ marginBlockStart: '0.4rem' }}>
-          Tip: this is the address you opened the panel with — usually exactly what your screens should use.
-        </p>
-        {base && <div className="rtsp-url" style={{ marginBlockStart: '0.6rem' }}>{base}/&lt;screen&gt;</div>}
+        <p className="page-sub">Defaults and appearance for this control panel.</p>
       </div>
 
       <div className="panel glass">
@@ -80,39 +57,88 @@ export function SettingsPage({ state, refetch }: Props) {
 
       <div className="panel glass">
         <h3 className="section-title" style={{ marginTop: 0 }}>Appearance</h3>
-        <p className="muted" style={{ marginBottom: '1rem' }}>Saved on this device. The theme can follow your device's light/dark setting.</p>
-        <Field label="Theme">
-          <div className="chips">
-            {(['system', 'light', 'dark'] as const).map((t) => (
-              <button key={t} type="button" className={`chip${prefs.theme === t ? ' is-active' : ''}`} onClick={() => prefsStore.patch({ theme: t })}>
-                {t === 'system' ? 'Match device' : t === 'light' ? 'Light' : 'Dark'}
-              </button>
-            ))}
-          </div>
-        </Field>
-        <Field label="Wallpaper" hint="Pick the same one you use in OpenMasjidOS.">
-          <div className="wallpaper-row">
-            {Object.entries(WALLPAPERS).map(([id, w]) => (
+        <p className="muted" style={{ marginBottom: '1rem' }}>
+          {canFollow
+            ? 'Saved on this device. It can follow your OpenMasjidOS light/dark theme and wallpaper automatically.'
+            : "Saved on this device. The theme can follow your device's light/dark setting."}
+        </p>
+
+        {canFollow && (
+          <Field label="Appearance source">
+            <div className="chips">
               <button
-                key={id}
                 type="button"
-                title={w.label}
-                className={`wallpaper${prefs.wallpaper === id && !prefs.wallpaperImage ? ' is-active' : ''}`}
-                style={{ background: w.preview }}
-                onClick={() => prefsStore.patch({ wallpaper: id, wallpaperImage: '' })}
+                className={`chip${following ? ' is-active' : ''}`}
+                onClick={() => {
+                  prefsStore.patch({ followOmos: true });
+                  void fetchOmosAppearance(state.omosBase);
+                }}
+              >
+                Match OpenMasjidOS
+              </button>
+              <button
+                type="button"
+                className={`chip${!following ? ' is-active' : ''}`}
+                onClick={() => prefsStore.patch({ followOmos: false })}
+              >
+                Choose my own
+              </button>
+            </div>
+          </Field>
+        )}
+
+        {following ? (
+          <p className="hint">
+            Following your OpenMasjidOS theme and wallpaper. Choose “Choose my own” to set them here instead.
+          </p>
+        ) : (
+          <>
+            <Field label="Theme">
+              <div className="chips">
+                {(['system', 'light', 'dark'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`chip${prefs.theme === t ? ' is-active' : ''}`}
+                    onClick={() => prefsStore.patch({ theme: t, followOmos: false })}
+                  >
+                    {t === 'system' ? 'Match device' : t === 'light' ? 'Light' : 'Dark'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Wallpaper" hint="Pick the same one you use in OpenMasjidOS.">
+              <div className="wallpaper-row">
+                {Object.entries(WALLPAPERS).map(([id, w]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    title={w.label}
+                    className={`wallpaper${prefs.wallpaper === id && !prefs.wallpaperImage ? ' is-active' : ''}`}
+                    style={{ background: w.preview }}
+                    onClick={() => prefsStore.patch({ wallpaper: id, wallpaperImage: '', followOmos: false })}
+                  />
+                ))}
+              </div>
+            </Field>
+            <Field label="Custom wallpaper image URL (optional)" hint="Paste the same image URL you use in OpenMasjidOS; leave blank to use a preset.">
+              <input
+                className="input"
+                value={prefs.wallpaperImage}
+                onChange={(e) => prefsStore.patch({ wallpaperImage: e.target.value, followOmos: false })}
+                placeholder="https://…/wallpaper.jpg"
               />
-            ))}
-          </div>
-        </Field>
-        <Field label="Custom wallpaper image URL (optional)" hint="Paste the same image URL you use in OpenMasjidOS; leave blank to use a preset.">
-          <input className="input" value={prefs.wallpaperImage} onChange={(e) => prefsStore.patch({ wallpaperImage: e.target.value })} placeholder="https://…/wallpaper.jpg" />
-        </Field>
+            </Field>
+          </>
+        )}
       </div>
 
       <div className="panel glass">
         <h3 className="section-title" style={{ marginTop: 0 }}>Connecting a screen</h3>
+        <p className="muted" style={{ marginBottom: '1rem' }}>
+          Each screen's link uses the address you opened this panel with — there's nothing to configure.
+        </p>
         <ol className="muted" style={{ paddingInlineStart: '1.2rem', lineHeight: 1.7, margin: 0 }}>
-          <li>Set the address above and Save.</li>
           <li>On the <b>Screens</b> page, add a screen and copy its link.</li>
           <li>In your TV's RTSP decoder, paste the link and set the transport to <b>TCP</b>.</li>
           <li>Pick what the screen shows — a timetable, a camera, or an HDMI source.</li>

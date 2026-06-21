@@ -47,6 +47,9 @@ each screen shows:
                                                           Each TV's RTSP decoder ── rtsp://<server>:8554/tv_xxxx
 ```
 
+Everything above runs in **one container** — the control panel, the timetable renderer and the RTSP
+server ([MediaMTX](https://github.com/bluenviron/mediamtx)) — so there's a single thing to install and update.
+
 - Each screen is a **stable RTSP path** (`…/tv_xxxx`). Switching what a screen shows is a single live API
   call — the decoder keeps the same URL.
 - Timetables are rendered to a lightweight low-frame-rate **H.264** stream (built as an SVG, rasterised, and
@@ -67,7 +70,7 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.3.0
+    ref: v0.4.0
 ```
 
 ### No install-time settings
@@ -78,11 +81,13 @@ This keeps install one-click and lets you change anything later without reinstal
 
 ## After installing
 
-1. Click **Open** (the control panel, default host port `7860`) and **create your control-panel password**.
-2. Go to **Settings** → set this server's network address (your LAN IP) → **Save**.
-3. On the **Screens** page, add a screen and **copy its link**.
-4. In your TV's RTSP decoder, paste the link and set the transport to **TCP**.
-5. Pick what each screen shows (a timetable, a camera, an HDMI source). Done.
+1. Click **Open** (the control panel, default host port `7860`). Installed through OpenMasjidOS you're
+   signed in automatically and it matches your dashboard's light/dark theme and wallpaper; on a standalone
+   install you create a control-panel password the first time.
+2. On the **Screens** page, add a screen and **copy its link** — it already points at this server (the
+   address you opened the panel with), so there's no IP to look up.
+3. In your TV's RTSP decoder, paste the link and set the transport to **TCP**.
+4. Pick what each screen shows (a timetable, a camera, an HDMI source). Done.
 
 Full decoder guidance and troubleshooting: [docs/RTSP_SETUP.md](docs/RTSP_SETUP.md).
 
@@ -107,13 +112,17 @@ cd web && npm install && npm run build
 docker compose up -d
 ```
 
-For local development, run the server (`cd server && npm run dev` then `node dist/index.js`) with a local
-MediaMTX, and `cd web && npm run dev` (proxies `/api` and `/ws` to the server).
+For local development, run the server with `MEDIAMTX_MANAGED=no` (so it won't try to launch the bundled
+MediaMTX) alongside your own `mediamtx`, and `cd web && npm run dev` (proxies `/api` and `/ws` to the
+server). In the built container the server launches and supervises MediaMTX itself.
 
 ## Security
 
 - Runs least-privilege: no privileged mode, host networking, devices, or Docker socket.
-- The control panel is protected by a single admin password (Argon-free signed, HTTP-only session cookie).
+- The control panel is protected by a single admin password (signed, HTTP-only session cookie).
+- Installed through OpenMasjidOS it can sign you in with your dashboard login — verified
+  **server-to-server** with the platform (never trusting the browser), and it falls back to its own
+  password when the platform is absent or unreachable.
 - Camera credentials embedded in RTSP links are never shown in the panel.
 - On a shared network, set a control-panel password and keep RTSP on your LAN.
 

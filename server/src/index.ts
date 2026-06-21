@@ -10,6 +10,7 @@ import { createApi } from './api';
 import { WsHub } from './ws';
 import { hasValidSession } from './auth';
 import { ping } from './mediamtx';
+import { MediaMtxServer } from './mediamtxServer';
 
 const log = makeLog('main');
 
@@ -19,6 +20,10 @@ async function main(): Promise<void> {
   const store = new Store();
   const render = new RenderManager();
   let hub: WsHub | null = null;
+
+  // The RTSP server (MediaMTX) runs inside this same container; bring it up first.
+  const mediamtx = new MediaMtxServer();
+  mediamtx.start();
 
   const orchestrator = new Orchestrator(store, render, (statuses) => {
     hub?.broadcast('status', statuses);
@@ -45,7 +50,7 @@ async function main(): Promise<void> {
       }
     });
   });
-  hub = new WsHub(server, (req) => !!store.db.admin && hasValidSession(req, store.secret));
+  hub = new WsHub(server, (req) => hasValidSession(req, store.secret));
 
   server.listen(config.port, () => {
     log.info(`OpenMasjid Display control panel listening on :${config.port}`);
@@ -70,6 +75,7 @@ async function main(): Promise<void> {
   const shutdown = () => {
     log.info('shutting down');
     render.stopAll();
+    mediamtx.stop();
     server.close();
     setTimeout(() => process.exit(0), 500);
   };

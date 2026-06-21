@@ -2,7 +2,7 @@ id: display
 name: OpenMasjid Display
 tagline: Run prayer timetables, cameras and HDMI on every screen in your masjid — over your network
 category: displays
-version: 0.3.0
+version: 0.4.0
 author: hasan-ismail
 license: AGPL-3.0
 icon: icon.svg
@@ -34,10 +34,11 @@ description: |
   container, and the whole control panel matches the calm OpenMasjidOS look in both
   light and dark.
 
-  **Nothing to fill in here — just install.** When it's running, click **Open**, create
-  your control-panel password, and set everything up inside: your masjid details,
-  this server's network address, your screens, cameras and schedules. Each screen
-  shows you the exact link to paste into its decoder.
+  **Nothing to fill in here — just install.** When it's running, click **Open** —
+  it signs you in with your OpenMasjidOS login and matches your dashboard's light/dark
+  look and wallpaper. Then set everything up inside: your masjid details, your screens,
+  cameras and schedules. Each screen shows you the exact link to paste into its decoder —
+  no network address to look up.
 ports:
   - container: 8080
     label: Control panel

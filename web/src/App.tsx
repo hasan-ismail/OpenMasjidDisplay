@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useAppState } from './state';
 import { api } from './api';
-import { usePrefs, prefsStore, resolveTheme } from './prefs';
+import { usePrefs, prefsStore, resolveTheme, useOmosAppearanceSync } from './prefs';
 import {
   ToastProvider,
   MasjidMark,
@@ -41,13 +41,22 @@ export function App() {
 }
 
 function Root() {
-  const { state, needAuth, needsSetup, loading, refetch, onAuthed } = useAppState();
+  const { state, authed, hasPassword, ssoEnabled, loading, refetch, onAuthed } = useAppState();
   const [tab, setTab] = useState<Tab>('screens');
+  const [setupInstead, setSetupInstead] = useState(false);
 
-  if (needsSetup) return <Setup onDone={onAuthed} />;
-  if (needAuth) return <Login onDone={onAuthed} />;
-  if (loading || !state) return <Splash />;
-  return <Shell state={state} refetch={refetch} tab={tab} setTab={setTab} />;
+  if (authed) return state ? <Shell state={state} refetch={refetch} tab={tab} setTab={setTab} /> : <Splash />;
+  if (loading) return <Splash />;
+  // Not signed in. Standalone first run (or a chosen fallback) → create a password.
+  if (!hasPassword && (setupInstead || !ssoEnabled)) return <Setup onDone={onAuthed} />;
+  return (
+    <Login
+      onDone={onAuthed}
+      ssoEnabled={ssoEnabled}
+      hasPassword={hasPassword}
+      onSetupInstead={!hasPassword ? () => setSetupInstead(true) : undefined}
+    />
+  );
 }
 
 function Scene() {
@@ -107,8 +116,10 @@ function Shell({
   setTab: (t: Tab) => void;
 }) {
   const prefs = usePrefs();
+  useOmosAppearanceSync(state.omosBase);
   const dark = resolveTheme(prefs.theme) === 'dark';
-  const toggleTheme = () => prefsStore.patch({ theme: dark ? 'light' : 'dark' });
+  // A manual toggle is an explicit choice → stop mirroring OpenMasjidOS.
+  const toggleTheme = () => prefsStore.patch({ theme: dark ? 'light' : 'dark', followOmos: false });
   const logout = async () => {
     try {
       await api.logout();
@@ -152,10 +163,52 @@ function Shell({
   );
 }
 
-function Login({ onDone }: { onDone: () => void }) {
+function Login({
+  onDone,
+  ssoEnabled,
+  hasPassword,
+  onSetupInstead,
+}: {
+  onDone: () => void;
+  ssoEnabled: boolean;
+  hasPassword: boolean;
+  onSetupInstead?: () => void;
+}) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Under OpenMasjidOS with no local password: there's nothing to type — the user
+  // just needs to open the app from the dashboard (which carries the platform
+  // session). Offer a fallback to set a password in case the platform is down.
+  if (ssoEnabled && !hasPassword) {
+    return (
+      <div className="auth-wrap">
+        <Scene />
+        <div className="auth-card glass-raised">
+          <div className="auth-logo"><MasjidMark size={44} /></div>
+          <h1 className="page-title" style={{ textAlign: 'center' }}>OpenMasjid Display</h1>
+          <p className="page-sub" style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+            This panel uses your OpenMasjidOS sign-in. Open it from your OpenMasjidOS
+            dashboard to continue.
+          </p>
+          <button className="btn btn--primary btn--block" onClick={onDone}>
+            I’ve signed in — continue
+          </button>
+          {onSetupInstead && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--block"
+              style={{ marginTop: '0.6rem' }}
+              onClick={onSetupInstead}
+            >
+              Set a password instead
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -191,6 +244,11 @@ function Login({ onDone }: { onDone: () => void }) {
         <button className="btn btn--primary btn--block" style={{ marginTop: '0.8rem' }} disabled={busy}>
           {busy ? <Spinner /> : 'Sign in'}
         </button>
+        {ssoEnabled && (
+          <p className="hint" style={{ textAlign: 'center', marginBlockStart: '0.8rem' }}>
+            Tip: open this app from your OpenMasjidOS dashboard to sign in automatically.
+          </p>
+        )}
       </form>
     </div>
   );

@@ -167,8 +167,6 @@ export function normSchedule(input: unknown, base?: ScheduleRule): ScheduleRule 
 export function normSettings(input: unknown, base: Settings): Settings {
   const o = asObj(input);
   return {
-    rtspPublicHost: str(o.rtspPublicHost, base.rtspPublicHost, 200).trim(),
-    rtspPublicPort: intIn(o.rtspPublicPort, base.rtspPublicPort, 1, 65535),
     defaultQuality: oneOf(o.defaultQuality, ['720p', '1080p'] as const, base.defaultQuality) as Quality,
     scheduleTimezone: str(o.scheduleTimezone, base.scheduleTimezone, 64).trim(),
   };
