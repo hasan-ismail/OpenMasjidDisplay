@@ -5,6 +5,14 @@
 > OpenMasjid Display consumes all of it as of **v0.4.0** — appearance in `web/src/prefs.ts`, SSO in
 > `server/src/omos.ts` — and still runs fully standalone when the platform is absent. The sections below
 > are the original contract, kept as the spec of record.
+>
+> **⚠️ Security follow-up (added after the OpenMasjid Display audit, 2026-06):** Part B's
+> "Security requirements" and the checklist now carry **new platform-side must-haves** — chiefly
+> **binding `/api/auth/session` to the calling app's identity** (`OPENMASJID_APP_ID` / per-app secret)
+> to contain the shared-`omos_session` blast radius, fail-closed/cookie-only validation, prompt
+> revocation, and protecting the injected `OPENMASJID_BASE_URL`. These are **not yet implemented on the
+> platform** and are the recommended next work on the fabric. App side is already hardened to match
+> (audience-bound tokens, login rate-limiting, short SSO session, sanitized cookie forwarding).
 
 > Audience: the **OpenMasjidOS** core developer. This describes small, optional,
 > backwards-compatible platform features so apps (e.g. **OpenMasjid Display**) can
@@ -56,6 +64,11 @@ The app reads `location.hash` on load, applies + persists the values, then clear
 the hash. (OpenMasjid Display is ready to consume this.) Payload is **presentation
 only**; the `v` field is a version for forward-compat.
 
+> **Security:** the fragment is **not a trust channel** — anyone can hand a user a
+> link with a crafted `#omos=…`. Never put a token, identity, or any security-relevant
+> value in it (presentation only). Apps must sanitize what they read (OpenMasjid Display
+> validates the `wallpaperImage` URL before using it).
+
 ### A2. Live read endpoint (optional — for live theme changes without reopening)
 
 Add a tiny **public** read of the current presentation prefs:
@@ -65,9 +78,11 @@ GET /api/public/appearance
 → 200 { "v":1, "theme":"system", "wallpaper":"ocean", "wallpaperImage":"", "accent":"cyan", "lang":"en" }
 ```
 
-- No masjid data, low sensitivity → may be served without auth.
+- **Presentation only — must never expose anything tied to the session** (it is
+  browser-fetched cross-origin and may be unauthenticated). No masjid data, no identity.
 - For an app's **browser** to read it cross-origin, send
-  `Access-Control-Allow-Origin: *` (or echo the app origin) on this route only.
+  `Access-Control-Allow-Origin: *` (or echo the app origin) on **this route only** —
+  do not widen CORS to authenticated routes (especially not `/api/auth/session`).
 - Apps poll this occasionally (or on focus) to follow live theme/wallpaper changes.
 - The platform already persists these in its prefs store (`packages/ui/src/lib/prefs.ts`);
   this endpoint just exposes the presentation subset.
@@ -106,14 +121,46 @@ expose a way to **introspect** it. Two implementation options:
    no `omos_session` is present, the app uses its **own** password login (today's
    behavior). So SSO is purely additive.
 
-**Security requirements (must-haves):**
-- Only ever trust a session the platform *confirms* for the cookie actually
-  presented on that request. Never trust a browser-supplied header/username.
+**Security requirements (must-haves) — `/api/auth/session` is the trust anchor.**
+A single `{"authenticated":true}` from this route causes an app to grant a signed-in
+session (in OpenMasjid Display it mints a local **admin** session). Treat it accordingly.
+These were hardened/validated during the OpenMasjid Display security audit (2026-06):
+
+- **Fail closed and be strict.** Return `authenticated:true` *only* for a genuinely
+  valid, unexpired, not-logged-out `omos_session`. Never return true for a missing/
+  empty/garbage cookie or a revoked session. Read the token **only from the cookie** —
+  never accept it via query string, header, or body (those are spoofable and end up in
+  logs). Keep the response shape exactly `{ authenticated: boolean, username?: string }`;
+  apps treat `username` as an untrusted display string (cap/escape it).
+- **Bind validation to the calling app's identity (the shared-cookie problem).** Because
+  `omos_session` is delivered by the browser to **every port on the host**, *every*
+  installed app receives the user's cookie and can forward it to `/api/auth/session` —
+  so one malicious/compromised app can validate as that user (and, for apps that mint
+  admin, become admin). The route currently ignores `OPENMASJID_APP_ID`. **Require the
+  calling app to present its `OPENMASJID_APP_ID`** (or, better, a per-app secret/token
+  issued at install) and scope/audit the result per app — don't hand every app a global
+  "yes" for the whole session. This is the most important fabric-side hardening.
+- **`OPENMASJID_BASE_URL` is a trust input — set it only from the platform**, to the
+  platform's own address (loopback/internal preferred). If an attacker can influence
+  this env at install time, the app's validation is redirected to a server they control
+  → instant elevated session. (App side already uses `redirect:'error'` + a timeout and
+  charset-sanitizes the forwarded cookie, but the env itself is the platform's to protect.)
+- **Revoke promptly.** After a user logs out or is deprovisioned, `/api/auth/session`
+  must start returning `authenticated:false` quickly — apps re-validate on a short cache
+  (~45 s) and on session expiry (OpenMasjid Display caps SSO sessions at ~1 h), so a
+  stale "true" leaves a lingering app session for that long. Add a revocation signal /
+  shorter max-validity to the contract if tighter is needed.
+- **Transport.** B1 assumes same-host (LAN, plain HTTP, cookie `SameSite=Strict`/HttpOnly —
+  keep both). If the platform or an app can ever live on another host, `/api/auth/session`
+  must be **HTTPS-only** and `omos_session` must be `Secure` (else the bearer cookie
+  crosses the network in cleartext). Cross-host SSO otherwise belongs to B2.
+- **Token hygiene (if the platform issues its own/per-app tokens).** Bind an
+  audience/scope into the signed token and verify it — never let a token's *name* (or
+  cookie name) be the only thing separating two trust levels. (OpenMasjid Display had a
+  bug where the admin and volunteer tokens shared a secret and differed only by cookie
+  name; one could be replayed as the other. Fixed by embedding+verifying an `aud` claim.)
 - The introspection call is **server→server** over the LAN; do not rely on CORS for it.
 - Keep the app's own CSRF posture (its API is same-origin to its own UI).
-- The cookie is `SameSite=Strict` + HttpOnly today — fine for same-site, same-host;
-  no change needed. If the platform ever needs apps on other hosts, that's out of
-  scope for cookie-SSO (use B2).
 
 ### Option B2 — Forward-auth reverse proxy (the "Umbrel-style" ideal; larger change)
 
@@ -134,10 +181,20 @@ Consider B2 later if the platform wants a unified origin for all app UIs.
 
 ## Minimal platform change checklist
 
-- [ ] A1: append `#omos=<base64url json>` to the app open URL (`apps.ts`).
-- [ ] A2 (optional): `GET /api/public/appearance` (+ CORS) exposing presentation prefs.
-- [ ] B0: inject `OPENMASJID_BASE_URL` (+ `OPENMASJID_APP_ID`) into app env on install.
-- [ ] B1: `GET /api/auth/session` REST route returning `{authenticated, username}` from the cookie.
+- [ ] A1: append `#omos=<base64url json>` to the app open URL (`apps.ts`). Presentation
+      only — never a token/identity (it's an attacker-craftable, untrusted channel).
+- [ ] A2 (optional): `GET /api/public/appearance` exposing **only** presentation prefs;
+      scope `Access-Control-Allow-Origin` to this route, never to authenticated ones.
+- [ ] B0: inject `OPENMASJID_BASE_URL` (+ `OPENMASJID_APP_ID`) into app env on install —
+      set **only** by the platform, to the platform's own address.
+- [ ] B1: `GET /api/auth/session` returning `{authenticated, username}` from the cookie —
+      **fail closed**, cookie-only, strict; do not return true for missing/revoked sessions.
+- [ ] B1 hardening: **bind validation to `OPENMASJID_APP_ID`** (or a per-app secret) so a
+      shared `omos_session` can't let one installed app act as the user toward another.
+- [ ] Revoke promptly: `/api/auth/session` flips to `false` on logout/deprovision (apps
+      cache ~45 s and cap their SSO session ~1 h).
+- [ ] If apps can ever run cross-host: serve `/api/auth/session` over HTTPS and mark
+      `omos_session` `Secure`.
 - [ ] Keep everything optional — apps must still work with none of it.
 
 On the app side, OpenMasjid Display will: read the A1 fragment on load; (if A2) poll
