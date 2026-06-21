@@ -203,7 +203,22 @@ h1, h2, h3, p { margin: 0; }
   animation: fade 0.18s ease both;
 }
 .modal { width: min(40rem, 100%); max-height: 90vh; overflow: auto; padding: 1.4rem; animation: pop 0.2s var(--ease-settle) both; }
+.modal--max { width: 96vw !important; max-width: 96vw; height: 92vh; }
 .modal-head { display: flex; align-items: center; gap: 0.75rem; margin-block-end: 1rem; }
+/* macOS-style window controls */
+.traffic { display: flex; gap: 0.5rem; align-items: center; }
+.tl { width: 0.85rem; height: 0.85rem; border-radius: 50%; border: 0; padding: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18); transition: filter var(--dur-micro) ease; }
+.tl--close { background: #ff5f57; }
+.tl--min { background: #febc2e; }
+.tl--max { background: #28c840; }
+.tl:hover { filter: brightness(1.15); }
+.win-restore {
+  position: fixed; inset-block-end: 5.5rem; inset-inline-start: 1rem; z-index: 120;
+  display: inline-flex; align-items: center; gap: 0.5rem; max-width: 60vw;
+  padding: 0.55rem 0.95rem; border: 0; border-radius: 999px; font-weight: 600; color: var(--color-ink);
+  animation: pop 0.18s var(--ease-settle) both;
+}
+.win-restore span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .modal-title { font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 0.6rem; margin-block-start: 1.2rem; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -248,6 +263,11 @@ h1, h2, h3, p { margin: 0; }
 .dock-sep { width: 1px; align-self: stretch; margin: 0.25rem; background: var(--color-border); flex-shrink: 0; }
 .nav-item--util { color: var(--color-ink-muted); }
 .nav-item { flex-shrink: 0; }
+/* Icon-forward dock (compact, OpenMasjidOS-like): label only on the active item. */
+.dock .nav-item { padding: 0.5rem 0.6rem; }
+.dock .nav-item .nav-label { display: none; }
+.dock .nav-item.is-active { padding-inline: 0.85rem; }
+.dock .nav-item.is-active .nav-label { display: inline; }
 
 /* ── Timetable studio (live editor) ─────────────────────────────────────── */
 .modal--wide { width: min(62rem, 100%); }
@@ -274,8 +294,7 @@ h1, h2, h3, p { margin: 0; }
   .studio__preview { position: static; }
 }
 @media (max-width: 720px) {
-  .nav-item .nav-label { display: none; }
-  .nav-item { padding: 0.6rem 0.7rem; }
   .grid2 { grid-template-columns: 1fr; }
   .screens-grid { grid-template-columns: 1fr; }
+  .dock .nav-item.is-active .nav-label { display: none; }
 }

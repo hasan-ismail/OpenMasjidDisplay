@@ -56,7 +56,7 @@ function hhmmOrNull(v: unknown): string | null {
 }
 
 const THEME_IDS = THEMES.map((t) => t.id);
-const METHODS_LIST: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Tehran', 'Jafari'];
+const METHODS_LIST: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi'];
 
 export function normContent(v: unknown): ContentRef {
   const o = asObj(v);
@@ -102,6 +102,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     orientation: oneOf(o.orientation, ['landscape', 'portrait'] as const, base?.orientation ?? 'landscape') as Orientation,
     quality: oneOf(o.quality, ['720p', '1080p'] as const, base?.quality ?? '720p') as Quality,
     layout: oneOf(o.layout, ['centered', 'clockTop', 'split'] as const, base?.layout ?? 'centered'),
+    layoutCarousel: o.layoutCarousel === undefined ? base?.layoutCarousel ?? false : bool(o.layoutCarousel, false),
     masjidName: str(o.masjidName, base?.masjidName ?? 'Our Masjid', 80) || 'Our Masjid',
     latitude: o.latitude === undefined ? base?.latitude ?? null : geoOrNull(o.latitude, -90, 90),
     longitude: o.longitude === undefined ? base?.longitude ?? null : geoOrNull(o.longitude, -180, 180),

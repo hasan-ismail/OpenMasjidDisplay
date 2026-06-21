@@ -18,7 +18,7 @@ import type {
 const log = makeLog('store');
 const DB_VERSION = 1;
 
-const VALID_METHODS: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Tehran', 'Jafari'];
+const VALID_METHODS: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi'];
 
 function pick<T extends string>(value: string, allowed: T[], fallback: T): T {
   return (allowed as string[]).includes(value) ? (value as T) : fallback;
@@ -50,6 +50,7 @@ function seededTimetable(): Timetable {
     orientation: 'landscape',
     quality: s.quality,
     layout: 'centered',
+    layoutCarousel: false,
     masjidName: s.masjidName || 'Our Masjid',
     latitude: Number.isFinite(lat) && Math.abs(lat) <= 90 ? lat : null,
     longitude: Number.isFinite(lng) && Math.abs(lng) <= 180 ? lng : null,
@@ -76,10 +77,13 @@ function migrateTimetable(t: Timetable): Timetable {
   return {
     ...t,
     layout: t.layout ?? 'centered',
+    layoutCarousel: t.layoutCarousel ?? false,
     showCountdown: t.showCountdown ?? true,
     showDates: t.showDates ?? true,
     showLogo: t.showLogo ?? true,
     backgroundImage: t.backgroundImage ?? '',
+    // Drop methods we no longer support (was Tehran/Jafari) → safe default.
+    method: VALID_METHODS.includes(t.method) ? t.method : 'MWL',
   };
 }
 

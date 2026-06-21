@@ -41,8 +41,6 @@ export const METHODS: Record<CalcMethod, MethodDef> = {
   Egypt: { label: 'Egyptian General Authority', fajr: 19.5, isha: 17.5 },
   Makkah: { label: 'Umm al-Qura, Makkah', fajr: 18.5, ishaMinutes: 90 },
   Karachi: { label: 'University of Islamic Sciences, Karachi', fajr: 18, isha: 18 },
-  Tehran: { label: 'Institute of Geophysics, Tehran', fajr: 17.7, maghrib: 4.5, isha: 14 },
-  Jafari: { label: 'Shia Ithna-Ashari (Jafari)', fajr: 16, maghrib: 4, isha: 14 },
 };
 
 export interface DateParts {

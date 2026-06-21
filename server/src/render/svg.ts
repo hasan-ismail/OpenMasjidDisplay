@@ -3,12 +3,14 @@
  * which resvg rasterizes into video frames.
  *
  * The look mirrors the OpenMasjidOS "liquid glass" language: a soft aurora scene
- * (or the masjid's own background image, gently frosted), translucent glass panels
- * with a top sheen and hairline borders, emerald/cyan primary and a gold accent.
- * Three arrangement presets (centered / clockTop / split) and per-element toggles
- * are honoured. No sacred/Arabic text appears in decorative chrome.
+ * (or the masjid's own background image, gently frosted), a live **sun or moon**
+ * that arcs across the sky by the real time of day and casts its glow onto the
+ * translucent glass panels (top sheen + hairline borders), emerald/cyan primary
+ * and a gold accent. Three arrangement presets (centered / clockTop / split) and
+ * per-element toggles are honoured; a carousel option rotates the layout over the
+ * day to avoid screen burn-in. No sacred/Arabic text appears in decorative chrome.
  */
-import type { Timetable } from '../types';
+import type { Timetable, TimetableLayout } from '../types';
 import { getPalette, type Palette } from './theme';
 import {
   prayerTimes,
@@ -78,7 +80,6 @@ function fmtClock(hours: number, timeFormat: string): ClockText {
   return { time: `${h}:${pad2(m)}`, period };
 }
 
-/** "h:mm" / "HH:mm" without the period suffix (for compact card use). */
 function fmtShort(hours: number | null, timeFormat: string): string {
   if (hours == null || !Number.isFinite(hours)) return '—';
   const c = fmtClock(hours, timeFormat);
@@ -185,9 +186,9 @@ interface Row {
 }
 
 const PRAYER_LABELS: Record<string, Record<string, string>> = {
-  en: { fajr: 'Fajr', sunrise: 'Sunrise', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha', jumuah: "Jumu'ah", iqamah: 'Iqāmah', next: 'Next prayer' },
-  ar: { fajr: 'الفجر', sunrise: 'الشروق', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء', jumuah: 'الجمعة', iqamah: 'الإقامة', next: 'الصلاة القادمة' },
-  ur: { fajr: 'فجر', sunrise: 'طلوع', dhuhr: 'ظہر', asr: 'عصر', maghrib: 'مغرب', isha: 'عشاء', jumuah: 'جمعہ', iqamah: 'اقامہ', next: 'اگلی نماز' },
+  en: { fajr: 'Fajr', sunrise: 'Sunrise', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha', jumuah: "Jumu'ah", iqamah: 'Iqāmah', athan: 'Adhan', next: 'Next prayer' },
+  ar: { fajr: 'الفجر', sunrise: 'الشروق', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء', jumuah: 'الجمعة', iqamah: 'الإقامة', athan: 'الأذان', next: 'الصلاة القادمة' },
+  ur: { fajr: 'فجر', sunrise: 'طلوع', dhuhr: 'ظہر', asr: 'عصر', maghrib: 'مغرب', isha: 'عشاء', jumuah: 'جمعہ', iqamah: 'اقامہ', athan: 'اذان', next: 'اگلی نماز' },
 };
 
 function labels(lang: string): Record<string, string> {
@@ -210,7 +211,6 @@ function buildModel(tt: Timetable, now: Date): Model {
   const off = timezoneOffsetHours(now, tz);
   const times = prayerTimes(parts, tt.latitude!, tt.longitude!, off, tt.method, tt.asrMadhab);
 
-  // Tomorrow's Fajr for post-Isha rollover.
   const tomorrow = new Date(now.getTime() + 86400000);
   const tParts = localParts(tomorrow, tz);
   const tOff = timezoneOffsetHours(tomorrow, tz);
@@ -260,17 +260,55 @@ function buildModel(tt: Timetable, now: Date): Model {
   return { parts, times, rows, activeKey, nextKey, nextHours, isFriday };
 }
 
-/** Shared <defs>: scene + glow + sheen + clock gradient + image frost + pattern. */
-function defs(p: Palette, hasImage: boolean): string {
+/** Where the sun/moon sits right now (an arc across the sky) + day/night. */
+interface Celestial {
+  isDay: boolean;
+  x: number;
+  y: number;
+}
+function celestialPos(times: PrayerTimes, nowHours: number, W: number, H: number, P: number): Celestial {
+  const { sunrise, sunset } = times;
+  const isDay = nowHours >= sunrise && nowHours < sunset;
+  let t: number;
+  if (isDay) {
+    t = clamp((nowHours - sunrise) / Math.max(0.1, sunset - sunrise), 0, 1);
+  } else {
+    const span = sunrise + 24 - sunset;
+    const elapsed = nowHours >= sunset ? nowHours - sunset : nowHours + 24 - sunset;
+    t = clamp(elapsed / Math.max(0.1, span), 0, 1);
+  }
+  const left = P + W * 0.08;
+  const right = W - P - W * 0.08;
+  const x = left + t * (right - left);
+  const y = H * 0.34 - Math.sin(t * Math.PI) * H * 0.2;
+  return { isDay, x, y };
+}
+
+/** Shared <defs>. The celestial glow is centred on the sun/moon position. */
+function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: number): string {
+  const glowColor = cel.isDay ? '#ffd98a' : '#cdd9f2';
+  const cxPct = ((cel.x / W) * 100).toFixed(1);
+  const cyPct = ((cel.y / H) * 100).toFixed(1);
   return `<defs>
     <radialGradient id="scene" cx="50%" cy="-10%" r="130%">
       <stop offset="0%" stop-color="${p.bg2}"/>
       <stop offset="55%" stop-color="${p.bg}"/>
       <stop offset="100%" stop-color="${p.bg}"/>
     </radialGradient>
-    <radialGradient id="glow" cx="50%" cy="0%" r="70%">
-      <stop offset="0%" stop-color="${hexToRgba(p.primary, 0.5)}"/>
+    <radialGradient id="cglow" cx="${cxPct}%" cy="${cyPct}%" r="60%">
+      <stop offset="0%" stop-color="${hexToRgba(glowColor, cel.isDay ? 0.4 : 0.28)}"/>
+      <stop offset="45%" stop-color="${hexToRgba(p.primary, 0.12)}"/>
       <stop offset="100%" stop-color="${hexToRgba(p.primary, 0)}"/>
+    </radialGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff6d8"/>
+      <stop offset="45%" stop-color="#ffe49b"/>
+      <stop offset="100%" stop-color="${hexToRgba('#f5b942', 0)}"/>
+    </radialGradient>
+    <radialGradient id="moon" cx="40%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#f4f7ff"/>
+      <stop offset="65%" stop-color="#d6def0"/>
+      <stop offset="100%" stop-color="#aab8d6"/>
     </radialGradient>
     <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="rgba(255,255,255,0.18)"/>
@@ -286,9 +324,7 @@ function defs(p: Palette, hasImage: boolean): string {
       <stop offset="50%" stop-color="${hexToRgba(p.bg, 0.35)}"/>
       <stop offset="100%" stop-color="${hexToRgba(p.bg, 0.7)}"/>
     </linearGradient>
-    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="8"/>
-    </filter>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="10"/></filter>
     ${hasImage ? `<filter id="frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="14"/></filter>` : ''}
     <pattern id="khatam" width="58" height="58" patternUnits="userSpaceOnUse">
       <g fill="none" stroke="${p.pattern}" stroke-width="1" opacity="0.05">
@@ -299,46 +335,24 @@ function defs(p: Palette, hasImage: boolean): string {
   </defs>`;
 }
 
-/** The clock + countdown, drawn centred in a box (clockTop / centered presets). */
-function clockGroup(
-  cx: number,
-  cy: number,
-  size: number,
-  clock: ClockText,
-  showCountdown: boolean,
-  pill: string,
-  p: Palette,
-): string {
-  const out: string[] = [];
-  const periodGap = clock.period ? size * 0.5 : 0;
-  out.push(text(cx - periodGap * 0.5, cy + size * 0.34, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: -1 }));
-  if (clock.period) {
-    out.push(text(cx - periodGap * 0.5 + size * 1.02, cy + size * 0.34, clock.period, { size: size * 0.26, fill: p.textDim, weight: 600, anchor: 'start' }));
+/** The sun (day) or moon (night) as a soft glowing body. */
+function celestialBody(cel: Celestial, W: number, H: number): string {
+  const r = Math.min(W, H) * 0.05;
+  if (cel.isDay) {
+    return (
+      `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${(r * 2.6).toFixed(1)}" fill="url(#sun)" opacity="0.55" filter="url(#soft)"/>` +
+      `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${r.toFixed(1)}" fill="url(#sun)"/>` +
+      `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${(r * 0.62).toFixed(1)}" fill="#fff7e0"/>`
+    );
   }
-  if (showCountdown && pill) {
-    const ps = clamp(size * 0.16, 13, 30);
-    const pw = pill.length * ps * 0.6 + ps * 2.2;
-    const ph = ps * 2.2;
-    const px = cx - pw / 2;
-    const py = cy + size * 0.5;
-    out.push(glass(px, py, pw, ph, ph / 2, { fill: GLASS_RAISED }));
-    out.push(text(cx, py + ph * 0.64, pill, { size: ps, fill: p.text, anchor: 'middle', letter: 0.5 }));
-  }
-  return out.join('');
+  return (
+    `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${(r * 2.3).toFixed(1)}" fill="${hexToRgba('#bcd0f5', 0.4)}" filter="url(#soft)"/>` +
+    `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${r.toFixed(1)}" fill="url(#moon)"/>`
+  );
 }
 
-/** A prayer card. Lays out as a tall stacked tile, or — when the cell is much
- *  wider than tall (a vertical list, e.g. the "split" layout) — as a row. */
-function prayerCard(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: Row,
-  p: Palette,
-  L: Record<string, string>,
-  timeFormat: string,
-): string {
+/** Prayer card — a tall stacked tile, or a wide row when much wider than tall. */
+function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palette, L: Record<string, string>, timeFormat: string): string {
   const cardR = Math.min(w, h) * 0.14;
   const fill = r.active ? hexToRgba(p.primary, 0.2) : r.minor ? HAIR_SOFT : GLASS;
   const stroke = r.active ? p.primary : HAIR;
@@ -348,7 +362,6 @@ function prayerCard(
   out.push(glass(x, y, w, h, cardR, { fill, stroke, sw: r.active ? 2 : 1, glow: r.active ? p.primary : undefined }));
 
   if (w / h > 2) {
-    // ── Row (name left, adhan + iqamah right) ──
     const pad = cardR + Math.min(w, h) * 0.08;
     if (r.active) out.push(rect(x + cardR * 0.5, y + cardR, Math.max(3, w * 0.01), h - 2 * cardR, 2, p.primarySoft));
     const nameSize = clamp(h * 0.3, 13, 30);
@@ -365,7 +378,6 @@ function prayerCard(
     return out.join('');
   }
 
-  // ── Tall stacked tile ──
   const center = x + w / 2;
   if (r.active) out.push(rect(x + cardR, y + Math.max(2, h * 0.05), w - 2 * cardR, Math.max(2, h * 0.025), 2, p.primarySoft));
   const nameSize = clamp(Math.min(w * 0.16, h * 0.2), 12, 30);
@@ -380,37 +392,129 @@ function prayerCard(
   return out.join('');
 }
 
-/** A grid of prayer cards filling (x,y,w,h) in `cols` columns. */
-function prayerGrid(
-  rows: Row[],
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  cols: number,
-  p: Palette,
-  L: Record<string, string>,
-  timeFormat: string,
-  gap: number,
-): string {
+function prayerGrid(rows: Row[], x: number, y: number, w: number, h: number, cols: number, p: Palette, L: Record<string, string>, timeFormat: string, gap: number): string {
   const rowsCount = Math.ceil(rows.length / cols);
   const cardW = (w - (cols - 1) * gap) / cols;
   const cardH = (h - (rowsCount - 1) * gap) / rowsCount;
   return rows
-    .map((r, i) => {
-      const col = i % cols;
-      const rowIdx = Math.floor(i / cols);
-      return prayerCard(x + col * (cardW + gap), y + rowIdx * (cardH + gap), cardW, cardH, r, p, L, timeFormat);
-    })
+    .map((r, i) => prayerCard(x + (i % cols) * (cardW + gap), y + Math.floor(i / cols) * (cardH + gap), cardW, cardH, r, p, L, timeFormat))
     .join('');
+}
+
+/** Clock (+ optional countdown pill) centred at (cx, cy). */
+function clockGroup(cx: number, cy: number, size: number, clock: ClockText, showCountdown: boolean, pill: string, p: Palette): string {
+  const out: string[] = [];
+  const periodGap = clock.period ? size * 0.5 : 0;
+  out.push(text(cx - periodGap * 0.5, cy + size * 0.34, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: -1 }));
+  if (clock.period) out.push(text(cx - periodGap * 0.5 + size * 1.02, cy + size * 0.34, clock.period, { size: size * 0.26, fill: p.textDim, weight: 600, anchor: 'start' }));
+  if (showCountdown && pill) {
+    const ps = clamp(size * 0.16, 13, 30);
+    const pw = pill.length * ps * 0.6 + ps * 2.2;
+    const ph = ps * 2.2;
+    out.push(glass(cx - pw / 2, cy + size * 0.5, pw, ph, ph / 2, { fill: GLASS_RAISED }));
+    out.push(text(cx, cy + size * 0.5 + ph * 0.64, pill, { size: ps, fill: p.text, anchor: 'middle', letter: 0.5 }));
+  }
+  return out.join('');
+}
+
+/** Big H : M : S countdown hero (used by the split / MasjidBox-style layout). */
+function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms: [number, number, number], p: Palette, L: Record<string, string>): string {
+  const out: string[] = [];
+  const numSize = clamp(w * 0.2, 38, 168);
+  const gapX = numSize * 1.18;
+  const colon = numSize * 0.62;
+  const xs = [cx - gapX, cx, cx + gapX];
+  const baseline = cy + numSize * 0.34;
+  const nums = [pad2(hms[0]), pad2(hms[1]), pad2(hms[2])];
+  const lab = ['HOURS', 'MINUTES', 'SECONDS'];
+  out.push(text(cx, cy - numSize * 0.78, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
+  for (let i = 0; i < 3; i++) {
+    out.push(text(xs[i], baseline, nums[i], { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', letter: -1 }));
+    out.push(text(xs[i], cy + numSize * 0.62, lab[i], { size: clamp(numSize * 0.13, 9, 20), fill: p.textFaint, weight: 700, anchor: 'middle', letter: 2 }));
+  }
+  out.push(text((xs[0] + xs[1]) / 2, baseline - numSize * 0.06, ':', { size: colon, fill: p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
+  out.push(text((xs[1] + xs[2]) / 2, baseline - numSize * 0.06, ':', { size: colon, fill: p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
+  return out.join('');
+}
+
+/** The MasjidBox-style split: a dense prayer list on the left, big countdown right. */
+function splitView(
+  tt: Timetable,
+  m: Model,
+  clock: ClockText,
+  hms: [number, number, number],
+  greg: string,
+  hij: string,
+  p: Palette,
+  L: Record<string, string>,
+  W: number,
+  H: number,
+  P: number,
+): string {
+  const out: string[] = [];
+  const gap = Math.min(W, H) * 0.014;
+  const top = P;
+  const bottom = H - P - H * 0.05;
+  const leftW = (W - 2 * P - gap * 1.6) * 0.44;
+  const leftX = P;
+  const leftH = bottom - top;
+  const pad = leftW * 0.075;
+
+  // ── Left panel: brand, clock, date, then the prayer list ──
+  out.push(glass(leftX, top, leftW, leftH, Math.min(leftW, leftH) * 0.05));
+  let cy = top + pad;
+  if (tt.showLogo) {
+    const ms = leftW * 0.13;
+    out.push(mark(leftX + pad, cy, ms, p.primary));
+    out.push(text(leftX + pad + ms + leftW * 0.04, cy + ms * 0.78, tt.masjidName, { size: clamp(leftW * 0.075, 14, 30), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
+    cy += ms + pad * 0.7;
+  } else {
+    out.push(text(leftX + pad, cy + leftW * 0.08, tt.masjidName, { size: clamp(leftW * 0.085, 14, 32), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
+    cy += leftW * 0.13;
+  }
+  const clockSize = clamp(leftW * 0.2, 34, 96);
+  out.push(text(leftX + pad, cy + clockSize * 0.8, clock.time + (clock.period ? ` ${clock.period}` : ''), { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'start', letter: -0.5 }));
+  if (tt.showDates) {
+    out.push(text(leftX + leftW - pad, cy + clockSize * 0.34, hij, { size: clamp(leftW * 0.05, 11, 22), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
+    out.push(text(leftX + leftW - pad, cy + clockSize * 0.7, greg, { size: clamp(leftW * 0.038, 9, 17), fill: p.textDim, anchor: 'end' }));
+  }
+  cy += clockSize + pad * 0.8;
+
+  // List header + rows.
+  const colAdhan = leftX + leftW * 0.66;
+  const colIq = leftX + leftW - pad;
+  const headSize = clamp(leftW * 0.04, 9, 16);
+  out.push(text(colAdhan, cy, L.athan?.toUpperCase() ?? 'ADHAN', { size: headSize, fill: p.textFaint, weight: 700, anchor: 'end', letter: 1 }));
+  out.push(text(colIq, cy, L.iqamah?.toUpperCase() ?? 'IQAMAH', { size: headSize, fill: p.textFaint, weight: 700, anchor: 'end', letter: 1 }));
+  cy += headSize * 0.6;
+  const listH = bottom - pad - cy;
+  const rowH = listH / m.rows.length;
+  m.rows.forEach((r, i) => {
+    const ry = cy + i * rowH;
+    if (r.active) out.push(glass(leftX + pad * 0.4, ry + rowH * 0.08, leftW - pad * 0.8, rowH * 0.84, rowH * 0.18, { fill: hexToRgba(p.primary, 0.18), stroke: p.primary, sw: 1.5 }));
+    const midY = ry + rowH * 0.64;
+    const nameColor = r.active ? p.primarySoft : r.next ? p.goldSoft : p.text;
+    const nameSize = clamp(rowH * 0.34, 12, 30);
+    const timeSize = clamp(rowH * 0.34, 12, 30);
+    out.push(text(leftX + pad, midY, L[r.label] ?? r.label, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start' }));
+    out.push(text(colAdhan, midY, fmtShort(r.adhan, tt.timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+    out.push(text(colIq, midY, r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : '—', { size: timeSize, fill: r.iqamah != null ? p.goldSoft : p.textFaint, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+  });
+
+  // ── Right: big countdown hero ──
+  const heroX = leftX + leftW + gap * 1.6;
+  const heroW = W - P - heroX;
+  out.push(countdownHero(heroX + heroW / 2, (top + bottom) / 2, heroW, m.rows.find((r) => r.next)?.label ?? 'fajr', hms, p, L));
+  return out.join('');
 }
 
 /** "Setup needed" frame when no location is configured. */
 function setupNeeded(p: Palette, W: number, H: number, masjidName: string): string {
+  const cel: Celestial = { isDay: true, x: W * 0.5, y: H * 0.18 };
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  ${defs(p, false)}
+  ${defs(p, false, cel, W, H)}
   ${rect(0, 0, W, H, 0, 'url(#scene)')}
-  ${rect(0, 0, W, H, 0, 'url(#glow)')}
+  ${rect(0, 0, W, H, 0, 'url(#cglow)')}
   ${rect(0, 0, W, H, 0, 'url(#khatam)')}
   ${text(W / 2, H * 0.42, masjidName, { size: clamp(W * 0.04, 28, 64), fill: p.primarySoft, family: FONT_DISPLAY, weight: 600, anchor: 'middle' })}
   ${text(W / 2, H * 0.52, 'This screen needs the masjid location', { size: clamp(W * 0.02, 16, 30), fill: p.text, anchor: 'middle' })}
@@ -422,6 +526,8 @@ export interface RenderOpts {
   /** data: URI of a custom background image, or null for the themed scene */
   bg?: string | null;
 }
+
+const CAROUSEL: TimetableLayout[] = ['centered', 'clockTop', 'split'];
 
 export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}): string {
   const { width: W, height: H } = dimsFor(tt.orientation, tt.quality);
@@ -437,10 +543,8 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
   const clock = fmtClock(nowHours, tt.timeFormat);
 
   const remMin = (m.nextHours - nowHours) * 60;
-  const ch = Math.floor(remMin / 60);
-  const cm = Math.floor(remMin % 60);
-  const cs = Math.floor((remMin * 60) % 60);
-  const countdown = ch > 0 ? `${ch}h ${pad2(cm)}m` : `${cm}m ${pad2(cs)}s`;
+  const hms: [number, number, number] = [Math.floor(remMin / 60), Math.floor(remMin % 60), Math.floor((remMin * 60) % 60)];
+  const countdown = hms[0] > 0 ? `${hms[0]}h ${pad2(hms[1])}m` : `${hms[1]}m ${pad2(hms[2])}s`;
   const nextLabel = L[m.rows.find((r) => r.next)?.label ?? 'fajr'] ?? '';
   const pillText = `${L.next.toUpperCase()}   ${nextLabel}  ·  ${countdown}`;
 
@@ -448,90 +552,77 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
   const hij = hijri(m.parts, tt.language);
 
   const portrait = tt.orientation === 'portrait';
-  const layout = portrait && tt.layout === 'split' ? 'centered' : tt.layout;
+  const base = tt.layoutCarousel ? CAROUSEL[Math.floor((m.parts.hour * 60 + m.parts.minute) / 15) % 3] : tt.layout;
+  const layout = portrait && base === 'split' ? 'centered' : base;
   const P = Math.round(Math.min(W, H) * 0.05);
   const hasImage = !!opts.bg;
+  const cel = celestialPos(m.times, nowHours, W, H, P);
 
   const out: string[] = [];
-  out.push(defs(p, hasImage));
+  out.push(defs(p, hasImage, cel, W, H));
 
-  // ── Background ────────────────────────────────────────────────────────────
+  // ── Background + sky ───────────────────────────────────────────────────────
   if (hasImage) {
     out.push(`<image href="${opts.bg}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" filter="url(#frost)"/>`);
     out.push(rect(0, 0, W, H, 0, 'url(#scrim)'));
   } else {
     out.push(rect(0, 0, W, H, 0, 'url(#scene)'));
-    out.push(rect(0, 0, W, H, 0, 'url(#glow)'));
   }
+  out.push(rect(0, 0, W, H, 0, 'url(#cglow)')); // light from the sun/moon
+  out.push(celestialBody(cel, W, H)); // the sun or moon itself
   out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
 
-  // ── Masthead (logo + name + dates) ─────────────────────────────────────────
-  const mastH = H * (portrait ? 0.11 : 0.15);
-  const mastY = P;
-  const markSize = mastH * 0.62;
-  if (portrait) {
-    if (tt.showLogo) out.push(mark(W / 2 - markSize / 2, mastY, markSize, p.primary));
-    out.push(text(W / 2, mastY + mastH * 0.9, tt.masjidName, { size: clamp(W * 0.06, 26, 72), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
-    if (tt.showDates) {
-      if (hij) out.push(text(W / 2, mastY + mastH * 1.2, hij, { size: clamp(W * 0.03, 14, 30), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'middle' }));
-      out.push(text(W / 2, mastY + mastH * 1.42, greg, { size: clamp(W * 0.022, 12, 22), fill: p.textDim, anchor: 'middle' }));
-    }
-  } else {
-    let nameX = P;
-    if (tt.showLogo) {
-      out.push(mark(P, mastY + (mastH - markSize) / 2, markSize, p.primary));
-      nameX = P + markSize + W * 0.012;
-    }
-    out.push(text(nameX, mastY + mastH * 0.62, tt.masjidName, { size: clamp(mastH * 0.46, 24, 64), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
-    if (tt.showDates) {
-      if (hij) out.push(text(W - P, mastY + mastH * 0.42, hij, { size: clamp(mastH * 0.28, 16, 34), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
-      out.push(text(W - P, mastY + mastH * 0.74, greg, { size: clamp(mastH * 0.2, 13, 24), fill: p.textDim, anchor: 'end' }));
-    }
-  }
-
-  // ── Body regions per layout ────────────────────────────────────────────────
-  const footerH = H * 0.05;
-  const bodyTop = mastY + mastH * (portrait && tt.showDates ? 1.55 : 1.15);
-  const bodyBottom = H - P - footerH;
-  const gap = Math.min(W, H) * 0.014;
-
   if (layout === 'split') {
-    // Left: clock + countdown in a tall glass panel. Right: vertical prayer list.
-    const colGap = gap * 1.5;
-    const leftW = (W - 2 * P - colGap) * 0.42;
-    const leftX = P;
-    const rightX = leftX + leftW + colGap;
-    const rightW = W - P - rightX;
-    const panelY = bodyTop;
-    const panelH = bodyBottom - bodyTop;
-    out.push(glass(leftX, panelY, leftW, panelH, Math.min(leftW, panelH) * 0.06));
-    const clockSize = clamp(leftW * 0.34, 60, 200);
-    out.push(clockGroup(leftX + leftW / 2, panelY + panelH * 0.4, clockSize, clock, tt.showCountdown, pillText, p));
-    out.push(prayerGrid(m.rows, rightX, panelY, rightW, panelH, 1, p, L, tt.timeFormat, gap));
-  } else if (layout === 'clockTop') {
-    // Clock band right under the masthead, grid fills the rest.
-    const bandH = (bodyBottom - bodyTop) * 0.3;
-    const bandY = bodyTop;
-    out.push(glass(P, bandY, W - 2 * P, bandH, Math.min(W, bandH) * 0.05));
-    const clockSize = clamp(bandH * 0.5, 50, 170);
-    out.push(clockGroup(W / 2, bandY + bandH * (tt.showCountdown ? 0.36 : 0.46), clockSize, clock, tt.showCountdown, pillText, p));
-    const gridY = bandY + bandH + gap * 1.5;
-    const cols = portrait ? 2 : m.rows.length;
-    out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, bodyBottom - gridY, cols, p, L, tt.timeFormat, gap));
+    out.push(splitView(tt, m, clock, hms, greg, hij, p, L, W, H, P));
   } else {
-    // centered: clock floats between masthead and a bottom grid.
-    const gridH = (bodyBottom - bodyTop) * (portrait ? 0.5 : 0.42);
-    const gridY = bodyBottom - gridH;
-    const clockSize = clamp(Math.min(W * (portrait ? 0.2 : 0.15), (gridY - bodyTop) * 0.5), 60, 240);
-    out.push(clockGroup(W / 2, (bodyTop + gridY) / 2 - clockSize * 0.1, clockSize, clock, tt.showCountdown, pillText, p));
-    const cols = portrait ? 2 : m.rows.length;
-    out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, gridH, cols, p, L, tt.timeFormat, gap));
+    // ── Masthead ──
+    const mastH = H * (portrait ? 0.11 : 0.15);
+    const mastY = P;
+    const markSize = mastH * 0.62;
+    if (portrait) {
+      if (tt.showLogo) out.push(mark(W / 2 - markSize / 2, mastY, markSize, p.primary));
+      out.push(text(W / 2, mastY + mastH * 0.9, tt.masjidName, { size: clamp(W * 0.06, 26, 72), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+      if (tt.showDates) {
+        if (hij) out.push(text(W / 2, mastY + mastH * 1.2, hij, { size: clamp(W * 0.03, 14, 30), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'middle' }));
+        out.push(text(W / 2, mastY + mastH * 1.42, greg, { size: clamp(W * 0.022, 12, 22), fill: p.textDim, anchor: 'middle' }));
+      }
+    } else {
+      let nameX = P;
+      if (tt.showLogo) {
+        out.push(mark(P, mastY + (mastH - markSize) / 2, markSize, p.primary));
+        nameX = P + markSize + W * 0.012;
+      }
+      out.push(text(nameX, mastY + mastH * 0.62, tt.masjidName, { size: clamp(mastH * 0.46, 24, 64), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
+      if (tt.showDates) {
+        if (hij) out.push(text(W - P, mastY + mastH * 0.42, hij, { size: clamp(mastH * 0.28, 16, 34), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
+        out.push(text(W - P, mastY + mastH * 0.74, greg, { size: clamp(mastH * 0.2, 13, 24), fill: p.textDim, anchor: 'end' }));
+      }
+    }
+
+    const footerH = H * 0.05;
+    const bodyTop = mastY + mastH * (portrait && tt.showDates ? 1.55 : 1.15);
+    const bodyBottom = H - P - footerH;
+    const gap = Math.min(W, H) * 0.014;
+
+    if (layout === 'clockTop') {
+      const bandH = (bodyBottom - bodyTop) * 0.3;
+      out.push(glass(P, bodyTop, W - 2 * P, bandH, Math.min(W, bandH) * 0.05));
+      const clockSize = clamp(bandH * 0.5, 50, 170);
+      out.push(clockGroup(W / 2, bodyTop + bandH * (tt.showCountdown ? 0.36 : 0.46), clockSize, clock, tt.showCountdown, pillText, p));
+      const gridY = bodyTop + bandH + gap * 1.5;
+      out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, bodyBottom - gridY, portrait ? 2 : m.rows.length, p, L, tt.timeFormat, gap));
+    } else {
+      const gridH = (bodyBottom - bodyTop) * (portrait ? 0.5 : 0.42);
+      const gridY = bodyBottom - gridH;
+      const clockSize = clamp(Math.min(W * (portrait ? 0.2 : 0.15), (gridY - bodyTop) * 0.5), 60, 240);
+      out.push(clockGroup(W / 2, (bodyTop + gridY) / 2 - clockSize * 0.1, clockSize, clock, tt.showCountdown, pillText, p));
+      out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, gridH, portrait ? 2 : m.rows.length, p, L, tt.timeFormat, gap));
+    }
   }
 
   // ── Footer ─────────────────────────────────────────────────────────────────
   const methodNote = `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
-  const footer = tt.footerNote ? tt.footerNote : methodNote;
-  out.push(text(W / 2, H - P * 0.5, footer, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5 }));
+  out.push(text(W / 2, H - P * 0.5, tt.footerNote || methodNote, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5 }));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }

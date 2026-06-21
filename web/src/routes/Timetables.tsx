@@ -8,7 +8,7 @@ interface Props {
   refetch: () => Promise<void>;
 }
 
-const METHODS = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Tehran', 'Jafari'] as const;
+const METHODS = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi'] as const;
 const LAYOUTS: { id: TimetableLayout; label: string }[] = [
   { id: 'centered', label: 'Centered' },
   { id: 'clockTop', label: 'Clock on top' },
@@ -110,7 +110,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
   }
   return {
     id: '', name: 'New timetable', themeId: 'emerald', accent: undefined,
-    orientation: 'landscape', quality: state.settings.defaultQuality, layout: 'centered',
+    orientation: 'landscape', quality: state.settings.defaultQuality, layout: 'centered', layoutCarousel: false,
     masjidName: state.timetables[0]?.masjidName ?? 'Our Masjid',
     latitude: '', longitude: '',
     method: 'MWL', asrMadhab: 'Standard', timezone: state.settings.scheduleTimezone ?? '',
@@ -208,10 +208,16 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
           <Field label="Layout">
             <div className="chips">
               {LAYOUTS.map((l) => (
-                <button key={l.id} type="button" className={`chip${f.layout === l.id ? ' is-active' : ''}`} onClick={() => set('layout', l.id)}>{l.label}</button>
+                <button key={l.id} type="button" className={`chip${f.layout === l.id && !f.layoutCarousel ? ' is-active' : ''}`} onClick={() => set('layout', l.id)}>{l.label}</button>
               ))}
             </div>
           </Field>
+          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.9rem' }}>
+            <span className="label" style={{ margin: 0 }}>
+              Rotate layouts over the day <span className="hint">— gently prevents TV burn-in</span>
+            </span>
+            <Toggle checked={f.layoutCarousel} onChange={(v) => set('layoutCarousel', v)} label="Rotate layouts over the day" />
+          </div>
 
           <div className="grid2">
             <Field label="Latitude" hint="e.g. 40.7128"><input className="input" inputMode="decimal" value={f.latitude} onChange={(e) => set('latitude', e.target.value)} /></Field>

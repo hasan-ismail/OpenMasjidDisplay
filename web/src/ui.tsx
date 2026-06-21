@@ -71,8 +71,18 @@ export function Modal({ open, onClose, title, children, footer, wide }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [minimized, setMinimized] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+
   useEffect(() => {
-    if (!open) return;
+    if (open) {
+      setMinimized(false);
+      setMaximized(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || minimized) return;
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -101,15 +111,38 @@ export function Modal({ open, onClose, title, children, footer, wide }: {
       window.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open, minimized, onClose]);
+
   if (!open) return null;
+
+  // Minimized → collapse to a restore chip near the dock ("minimize to dock").
+  if (minimized) {
+    return (
+      <button className="win-restore glass-raised" onClick={() => setMinimized(false)} title={`Restore ${title}`}>
+        <IconScreen size={15} /> <span>{title}</span>
+      </button>
+    );
+  }
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div ref={ref} tabIndex={-1} className={`modal glass-raised${wide ? ' modal--wide' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
+    <div className="modal-backdrop">
+      <div
+        ref={ref}
+        tabIndex={-1}
+        className={`modal glass-raised${wide ? ' modal--wide' : ''}${maximized ? ' modal--max' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <div className="modal-head">
+          <div className="traffic" role="group" aria-label="Window controls">
+            <button className="tl tl--close" onClick={onClose} aria-label="Close" title="Close" />
+            <button className="tl tl--min" onClick={() => setMinimized(true)} aria-label="Minimize" title="Minimize" />
+            <button className="tl tl--max" onClick={() => setMaximized((v) => !v)} aria-label={maximized ? 'Restore size' : 'Maximize'} title={maximized ? 'Restore size' : 'Maximize'} />
+          </div>
           <h2 className="modal-title">{title}</h2>
           <span className="spacer" />
-          <button className="icon-btn" onClick={onClose} aria-label="Close"><IconX /></button>
         </div>
         {children}
         {footer && <div className="modal-foot">{footer}</div>}

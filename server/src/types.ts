@@ -11,7 +11,7 @@ export type Orientation = 'landscape' | 'portrait';
 /** Arrangement preset for the on-screen layout (see render/svg.ts). */
 export type TimetableLayout = 'centered' | 'clockTop' | 'split';
 export type Lang = 'en' | 'ar' | 'ur';
-export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi' | 'Tehran' | 'Jafari';
+export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi';
 export type AsrMadhab = 'Standard' | 'Hanafi';
 export type TimeFormat = '12h' | '24h';
 
@@ -44,6 +44,8 @@ export interface Timetable {
   quality: Quality;
   /** on-screen arrangement preset */
   layout: TimetableLayout;
+  /** rotate through the layouts over the day to avoid screen burn-in */
+  layoutCarousel: boolean;
   masjidName: string;
   latitude: number | null;
   longitude: number | null;

@@ -4,7 +4,7 @@ export type Quality = '720p' | '1080p';
 export type Orientation = 'landscape' | 'portrait';
 export type TimetableLayout = 'centered' | 'clockTop' | 'split';
 export type Lang = 'en' | 'ar' | 'ur';
-export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi' | 'Tehran' | 'Jafari';
+export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi';
 export type AsrMadhab = 'Standard' | 'Hanafi';
 export type TimeFormat = '12h' | '24h';
 
@@ -28,6 +28,7 @@ export interface Timetable {
   orientation: Orientation;
   quality: Quality;
   layout: TimetableLayout;
+  layoutCarousel: boolean;
   masjidName: string;
   latitude: number | null;
   longitude: number | null;
