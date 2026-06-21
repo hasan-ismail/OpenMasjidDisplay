@@ -15,6 +15,7 @@ import { config } from '../config';
 import { makeLog } from '../logger';
 import { fontOptions } from './fonts';
 import { renderDisplaySvg, dimsFor, type Dims } from './svg';
+import { backgroundDataUri } from './background';
 import type { Timetable } from '../types';
 
 const log = makeLog('render');
@@ -167,7 +168,8 @@ class TimetablePipeline extends FfmpegPipeline {
     const stdin = this.proc?.stdin;
     if (!stdin || !stdin.writable) return;
     try {
-      const svg = renderDisplaySvg(tt, new Date());
+      const bg = tt.backgroundImage ? backgroundDataUri(tt.backgroundImage) : null;
+      const svg = renderDisplaySvg(tt, new Date(), { bg });
       const img = new Resvg(svg, { font: fontOptions() }).render();
       // Avoid unbounded buffering if ffmpeg stalls.
       if (stdin.writableLength < img.pixels.length * 4) stdin.write(img.pixels);

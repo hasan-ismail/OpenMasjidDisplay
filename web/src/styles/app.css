@@ -234,18 +234,48 @@ h1, h2, h3, p { margin: 0; }
 }
 .warn-banner svg { color: var(--color-warning); flex-shrink: 0; }
 
-/* ── Mobile: nav becomes a bottom bar ───────────────────────────────────── */
-.nav-bar {
-  position: fixed; inset-block-end: 0.9rem; inset-inline: 0; z-index: 40;
-  display: none; justify-content: center;
+/* ── Bottom dock (primary navigation — matches OpenMasjidOS) ─────────────── */
+.dock-wrap {
+  position: fixed; inset-block-end: 1rem; inset-inline: 0; z-index: 40;
+  display: flex; justify-content: center; pointer-events: none; padding-inline: 0.75rem;
+}
+.dock {
+  pointer-events: auto; display: flex; align-items: center; gap: 0.25rem;
+  padding: 0.4rem; border-radius: 999px; max-width: 100%;
+  overflow-x: auto; scrollbar-width: none;
+}
+.dock::-webkit-scrollbar { display: none; }
+.dock-sep { width: 1px; align-self: stretch; margin: 0.25rem; background: var(--color-border); flex-shrink: 0; }
+.nav-item--util { color: var(--color-ink-muted); }
+.nav-item { flex-shrink: 0; }
+
+/* ── Timetable studio (live editor) ─────────────────────────────────────── */
+.modal--wide { width: min(62rem, 100%); }
+.studio { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.4rem; align-items: start; }
+.studio__preview { position: sticky; top: 0; }
+.studio__controls { min-width: 0; }
+.studio-canvas {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  border-radius: var(--radius-button); overflow: hidden;
+  background: var(--color-surface); box-shadow: var(--glass-shadow);
+  display: grid; place-items: center;
+}
+.studio-canvas--portrait { aspect-ratio: 9 / 16; max-width: 300px; margin-inline: auto; }
+.studio-canvas__img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.studio-canvas__overlay { position: absolute; inset: 0; display: grid; place-items: center; }
+.toggle-list { display: flex; flex-direction: column; }
+.toggle-row { padding-block: 0.5rem; border-block-end: 1px solid var(--color-border); }
+.toggle-row:last-child { border-block-end: 0; }
+.color-input { width: 2.4rem; height: 1.9rem; padding: 0; border: 1px solid var(--color-border); border-radius: 0.5rem; background: var(--glass-bg-inset); cursor: pointer; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .studio { grid-template-columns: 1fr; }
+  .studio__preview { position: static; }
 }
 @media (max-width: 720px) {
-  .topbar .nav { display: none; }
-  .nav-bar { display: flex; }
-  .nav-bar .nav { max-width: calc(100vw - 1.5rem); }
   .nav-item .nav-label { display: none; }
-  .nav-item { padding: 0.55rem 0.7rem; }
-  .main { padding-block-end: 6rem; }
+  .nav-item { padding: 0.6rem 0.7rem; }
   .grid2 { grid-template-columns: 1fr; }
   .screens-grid { grid-template-columns: 1fr; }
 }

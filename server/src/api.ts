@@ -19,6 +19,7 @@ import {
 import { platformUser, ssoConfigured } from './omos';
 import { THEMES } from './render/theme';
 import { renderDisplaySvg } from './render/svg';
+import { backgroundDataUri, saveBackground, removeBackground, isAllowedImageMime } from './render/background';
 import { fontOptions } from './render/fonts';
 import {
   normTimetable,
@@ -55,13 +56,13 @@ function sendJson(res: ServerResponse, status: number, obj: unknown): void {
   res.end(body);
 }
 
-function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+function readBody(req: IncomingMessage, maxBytes = 1_000_000): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let data = '';
     let size = 0;
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > 1_000_000) {
+      if (size > maxBytes) {
         reject(new Error('body too large'));
         req.destroy();
         return;
@@ -237,8 +238,41 @@ export function createApi(deps: Deps) {
           return sendJson(res, 200, updated);
         }
         if (method === 'DELETE') {
+          removeBackground(id);
           store.update((db) => void (db.timetables = db.timetables.filter((t) => t.id !== id)));
           return sendJson(res, 200, { ok: true });
+        }
+      }
+
+      // ---- Timetable custom background ------------------------------------
+      const bgMatch = /^\/api\/timetables\/([\w-]+)\/background$/.exec(pathname);
+      if (bgMatch) {
+        const id = bgMatch[1];
+        const idx = store.db.timetables.findIndex((t) => t.id === id);
+        if (idx < 0) return sendJson(res, 404, { error: 'Timetable not found.' });
+        if (method === 'POST') {
+          const body = await readBody(req, 8_000_000);
+          const m = /^data:([^;,]+);base64,(.+)$/s.exec(String(body.data ?? ''));
+          if (!m || !isAllowedImageMime(m[1])) {
+            return sendJson(res, 400, { error: 'Please choose a PNG, JPG, WebP or GIF image.' });
+          }
+          let buf: Buffer;
+          try {
+            buf = Buffer.from(m[2], 'base64');
+          } catch {
+            return sendJson(res, 400, { error: 'That image could not be read.' });
+          }
+          if (buf.length > 6_000_000) {
+            return sendJson(res, 400, { error: 'That image is too large — please keep it under about 6 MB.' });
+          }
+          const file = saveBackground(id, m[1], buf);
+          store.update((db) => void (db.timetables[idx].backgroundImage = file));
+          return sendJson(res, 200, store.db.timetables[idx]);
+        }
+        if (method === 'DELETE') {
+          removeBackground(id);
+          store.update((db) => void (db.timetables[idx].backgroundImage = ''));
+          return sendJson(res, 200, store.db.timetables[idx]);
         }
       }
 
@@ -336,15 +370,25 @@ export function createApi(deps: Deps) {
       }
 
       // ---- Timetable PNG preview ------------------------------------------
+      // Live preview of unsaved edits (POST the form body) or the stored one (GET by id).
+      if (pathname === '/api/preview' && method === 'POST') {
+        const body = await readBody(req);
+        const tt = normTimetable(body);
+        const bgFile = typeof body.backgroundImage === 'string' ? body.backgroundImage : '';
+        const bg = bgFile ? backgroundDataUri(bgFile) : null;
+        const width = tt.orientation === 'portrait' ? 540 : 960;
+        const png = new Resvg(renderDisplaySvg(tt, new Date(), { bg }), { font: fontOptions(), fitTo: { mode: 'width', value: width } }).render().asPng();
+        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
+        res.end(png);
+        return;
+      }
       const prevMatch = /^\/api\/preview\/([\w-]+)$/.exec(pathname);
       if (prevMatch && method === 'GET') {
         const tt = store.db.timetables.find((t) => t.id === prevMatch[1]);
         if (!tt) return sendJson(res, 404, { error: 'Timetable not found.' });
-        const svg = renderDisplaySvg(tt, new Date());
+        const bg = tt.backgroundImage ? backgroundDataUri(tt.backgroundImage) : null;
         const width = tt.orientation === 'portrait' ? 540 : 960;
-        const png = new Resvg(svg, { font: fontOptions(), fitTo: { mode: 'width', value: width } })
-          .render()
-          .asPng();
+        const png = new Resvg(renderDisplaySvg(tt, new Date(), { bg }), { font: fontOptions(), fitTo: { mode: 'width', value: width } }).render().asPng();
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
         res.end(png);
         return;

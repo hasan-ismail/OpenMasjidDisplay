@@ -20,7 +20,9 @@ each screen shows:
 - 🕌 **Prayer timetables** — beautiful, full-screen prayer clocks calculated on the device (no internet
   needed). Make as many as you like, each with its own colours to match the room it hangs in. Shows a large
   live clock, the Hijri and Gregorian dates, every prayer's **Adhan and Iqamah** time, Jumu'ah, and a gentle
-  countdown to the next prayer with the current prayer highlighted.
+  countdown to the next prayer with the current prayer highlighted. Design each one in a **live editor** —
+  choose a layout (centered, clock-on-top or split), colours, which elements show, or your own **custom
+  background image** — and watch it update as you type.
 - 📷 **Cameras** — bring in any IP/security camera or an imam camera and put it on a screen with one tap
   (great for overflow rooms and the women's section).
 - 🖥️ **HDMI sources** — plug a laptop or a recording into an HDMI-to-network encoder and send it to the
@@ -70,7 +72,7 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.4.1
+    ref: v0.5.0
 ```
 
 ### No install-time settings

@@ -55,6 +55,25 @@ export const api = {
   createTimetable: (b: Partial<Timetable>) => req<Timetable>('POST', '/api/timetables', b),
   updateTimetable: (id: string, b: Partial<Timetable>) => req<Timetable>('PUT', `/api/timetables/${id}`, b),
   deleteTimetable: (id: string) => req('DELETE', `/api/timetables/${id}`),
+  uploadBackground: (id: string, dataUrl: string) =>
+    req<Timetable>('POST', `/api/timetables/${id}/background`, { data: dataUrl }),
+  removeBackground: (id: string) => req<Timetable>('DELETE', `/api/timetables/${id}/background`),
+
+  /** Live PNG preview of an unsaved timetable form; returns an object URL. */
+  previewLive: async (body: Partial<Timetable>): Promise<string> => {
+    const res = await fetch('/api/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'same-origin',
+    });
+    if (res.status === 401) {
+      onUnauth();
+      throw new Error('Please sign in.');
+    }
+    if (!res.ok) throw new Error('Could not render the preview.');
+    return URL.createObjectURL(await res.blob());
+  },
 
   createSource: (b: Partial<Source>) => req<Source>('POST', '/api/sources', b),
   updateSource: (id: string, b: Partial<Source>) => req<Source>('PUT', `/api/sources/${id}`, b),

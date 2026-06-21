@@ -49,6 +49,7 @@ function seededTimetable(): Timetable {
     themeId: 'emerald',
     orientation: 'landscape',
     quality: s.quality,
+    layout: 'centered',
     masjidName: s.masjidName || 'Our Masjid',
     latitude: Number.isFinite(lat) && Math.abs(lat) <= 90 ? lat : null,
     longitude: Number.isFinite(lng) && Math.abs(lng) <= 180 ? lng : null,
@@ -60,6 +61,10 @@ function seededTimetable(): Timetable {
     iqamah: defaultIqamah(),
     jumuah: ['13:30'],
     showSunrise: true,
+    showCountdown: true,
+    showDates: true,
+    showLogo: true,
+    backgroundImage: '',
     footerNote: '',
     createdAt: new Date().toISOString(),
   };

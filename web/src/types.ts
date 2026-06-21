@@ -2,6 +2,7 @@
 
 export type Quality = '720p' | '1080p';
 export type Orientation = 'landscape' | 'portrait';
+export type TimetableLayout = 'centered' | 'clockTop' | 'split';
 export type Lang = 'en' | 'ar' | 'ur';
 export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi' | 'Tehran' | 'Jafari';
 export type AsrMadhab = 'Standard' | 'Hanafi';
@@ -26,6 +27,7 @@ export interface Timetable {
   accent?: string;
   orientation: Orientation;
   quality: Quality;
+  layout: TimetableLayout;
   masjidName: string;
   latitude: number | null;
   longitude: number | null;
@@ -37,6 +39,10 @@ export interface Timetable {
   iqamah: IqamahConfig;
   jumuah: string[];
   showSunrise: boolean;
+  showCountdown: boolean;
+  showDates: boolean;
+  showLogo: boolean;
+  backgroundImage: string;
   footerNote: string;
   createdAt: string;
 }

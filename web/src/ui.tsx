@@ -67,8 +67,8 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 }
 
 /* ── Modal ───────────────────────────────────────────────────────────────── */
-export function Modal({ open, onClose, title, children, footer }: {
-  open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode;
+export function Modal({ open, onClose, title, children, footer, wide }: {
+  open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -105,7 +105,7 @@ export function Modal({ open, onClose, title, children, footer }: {
   if (!open) return null;
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div ref={ref} tabIndex={-1} className="modal glass-raised" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={ref} tabIndex={-1} className={`modal glass-raised${wide ? ' modal--wide' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h2 className="modal-title">{title}</h2>
           <span className="spacer" />

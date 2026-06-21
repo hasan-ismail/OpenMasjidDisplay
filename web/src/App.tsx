@@ -86,21 +86,44 @@ function Splash() {
   );
 }
 
-function Nav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+function Dock({
+  tab,
+  setTab,
+  dark,
+  onToggleTheme,
+  onLogout,
+}: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  dark: boolean;
+  onToggleTheme: () => void;
+  onLogout?: () => void;
+}) {
   return (
-    <nav className="nav glass-raised" aria-label="Sections">
-      {TABS.map(({ id, label, Icon }) => (
-        <button
-          key={id}
-          className={`nav-item${tab === id ? ' is-active' : ''}`}
-          onClick={() => setTab(id)}
-          aria-current={tab === id ? 'page' : undefined}
-        >
-          <Icon size={18} />
-          <span className="nav-label">{label}</span>
+    <div className="dock-wrap">
+      <nav className="dock glass-raised" aria-label="Sections">
+        {TABS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            className={`nav-item${tab === id ? ' is-active' : ''}`}
+            onClick={() => setTab(id)}
+            aria-current={tab === id ? 'page' : undefined}
+          >
+            <Icon size={18} />
+            <span className="nav-label">{label}</span>
+          </button>
+        ))}
+        <span className="dock-sep" aria-hidden="true" />
+        <button className="nav-item nav-item--util" onClick={onToggleTheme} aria-label="Toggle light or dark">
+          {dark ? <IconSun size={18} /> : <IconMoon size={18} />}
         </button>
-      ))}
-    </nav>
+        {onLogout && (
+          <button className="nav-item nav-item--util" onClick={onLogout} aria-label="Sign out" title="Sign out">
+            <IconPower size={18} />
+          </button>
+        )}
+      </nav>
+    </div>
   );
 }
 
@@ -133,19 +156,9 @@ function Shell({
       <Scene />
       <header className="topbar">
         <div className="brand">
-          <MasjidMark size={26} />
+          <MasjidMark size={24} />
           <b>OpenMasjid Display</b>
         </div>
-        <span className="spacer" />
-        <Nav tab={tab} setTab={setTab} />
-        <button className="icon-btn" onClick={toggleTheme} aria-label="Toggle light/dark">
-          {dark ? <IconSun /> : <IconMoon />}
-        </button>
-        {state.authRequired && (
-          <button className="icon-btn" onClick={logout} aria-label="Sign out" title="Sign out">
-            <IconPower />
-          </button>
-        )}
       </header>
 
       <main className="main">
@@ -156,9 +169,13 @@ function Shell({
         {tab === 'settings' && <SettingsPage state={state} refetch={refetch} />}
       </main>
 
-      <div className="nav-bar">
-        <Nav tab={tab} setTab={setTab} />
-      </div>
+      <Dock
+        tab={tab}
+        setTab={setTab}
+        dark={dark}
+        onToggleTheme={toggleTheme}
+        onLogout={state.authRequired ? logout : undefined}
+      />
     </div>
   );
 }

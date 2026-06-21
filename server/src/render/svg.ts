@@ -1,8 +1,12 @@
 /**
  * render/svg.ts — builds the full-screen prayer-times display as an SVG string,
- * which resvg rasterizes into video frames. Calm, dignified, TV-first; mirrors
- * the OpenMasjidOS design language (deep scene, emerald/cyan primary, gold
- * accent, geometric khatam motif). No sacred/Arabic text in decorative chrome.
+ * which resvg rasterizes into video frames.
+ *
+ * The look mirrors the OpenMasjidOS "liquid glass" language: a soft aurora scene
+ * (or the masjid's own background image, gently frosted), translucent glass panels
+ * with a top sheen and hairline borders, emerald/cyan primary and a gold accent.
+ * Three arrangement presets (centered / clockTop / split) and per-element toggles
+ * are honoured. No sacred/Arabic text appears in decorative chrome.
  */
 import type { Timetable } from '../types';
 import { getPalette, type Palette } from './theme';
@@ -33,6 +37,13 @@ export function dimsFor(orientation: string, quality: string): Dims {
 const FONT_DISPLAY = 'Noto Serif, Noto Naskh Arabic, DejaVu Serif, serif';
 const FONT_SANS = 'Noto Sans, Noto Sans Arabic, DejaVu Sans, sans-serif';
 
+// Glass surfaces are white-translucent regardless of theme, so the scene (or the
+// masjid's photo) shows through them — that is what reads as "glass".
+const GLASS = 'rgba(255,255,255,0.06)';
+const GLASS_RAISED = 'rgba(255,255,255,0.10)';
+const HAIR = 'rgba(255,255,255,0.16)';
+const HAIR_SOFT = 'rgba(255,255,255,0.09)';
+
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -42,6 +53,13 @@ function esc(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function hexToRgba(hex: string, a: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return `rgba(255,255,255,${a})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
 interface ClockText {
@@ -115,18 +133,34 @@ function text(x: number, baseline: number, content: string, o: TextOpts): string
   return `<text ${attrs.join(' ')}>${esc(content)}</text>`;
 }
 
-function rrect(
+function rect(x: number, y: number, w: number, h: number, r: number, fill: string, extra = ''): string {
+  return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(
+    1,
+  )}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}" fill="${fill}" ${extra}/>`;
+}
+
+/** A frosted-glass panel: translucent fill + a top sheen + a hairline border. */
+function glass(
   x: number,
   y: number,
   w: number,
   h: number,
   r: number,
-  fill: string,
-  extra = '',
+  opts: { fill?: string; stroke?: string; sw?: number; glow?: string } = {},
 ): string {
-  return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(
-    1,
-  )}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}" fill="${fill}" ${extra}/>`;
+  const fill = opts.fill ?? GLASS;
+  const stroke = opts.stroke ?? HAIR;
+  const sw = opts.sw ?? 1;
+  const parts: string[] = [];
+  if (opts.glow) {
+    parts.push(
+      `<rect x="${(x - 1).toFixed(1)}" y="${(y - 1).toFixed(1)}" width="${(w + 2).toFixed(1)}" height="${(h + 2).toFixed(1)}" rx="${(r + 1).toFixed(1)}" fill="none" stroke="${opts.glow}" stroke-width="6" opacity="0.5" filter="url(#soft)"/>`,
+    );
+  }
+  parts.push(rect(x, y, w, h, r, fill));
+  parts.push(rect(x, y, w, h, r, 'url(#sheen)'));
+  parts.push(rect(x, y, w, h, r, 'none', `stroke="${stroke}" stroke-width="${sw}"`));
+  return parts.join('');
 }
 
 /** Small dome + mihrab-arch brand mark in the primary colour. */
@@ -205,7 +239,6 @@ function buildModel(tt: Timetable, now: Date): Model {
 
   const isFriday = dayOfWeek(now, tz) === 5;
 
-  // Build the visible rows (Dhuhr becomes Jumu'ah on Fridays).
   const iq = (k: keyof typeof tt.iqamah, adhan: number) => iqamahHours(adhan, tt.iqamah[k]);
   const rows: Row[] = [];
   rows.push({ key: 'fajr', label: 'fajr', adhan: times.fajr, iqamah: iq('fajr', times.fajr) });
@@ -227,17 +260,170 @@ function buildModel(tt: Timetable, now: Date): Model {
   return { parts, times, rows, activeKey, nextKey, nextHours, isFriday };
 }
 
+/** Shared <defs>: scene + glow + sheen + clock gradient + image frost + pattern. */
+function defs(p: Palette, hasImage: boolean): string {
+  return `<defs>
+    <radialGradient id="scene" cx="50%" cy="-10%" r="130%">
+      <stop offset="0%" stop-color="${p.bg2}"/>
+      <stop offset="55%" stop-color="${p.bg}"/>
+      <stop offset="100%" stop-color="${p.bg}"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="0%" r="70%">
+      <stop offset="0%" stop-color="${hexToRgba(p.primary, 0.5)}"/>
+      <stop offset="100%" stop-color="${hexToRgba(p.primary, 0)}"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.18)"/>
+      <stop offset="42%" stop-color="rgba(255,255,255,0.03)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <linearGradient id="clockg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="${p.textDim}"/>
+    </linearGradient>
+    <linearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${hexToRgba(p.bg, 0.55)}"/>
+      <stop offset="50%" stop-color="${hexToRgba(p.bg, 0.35)}"/>
+      <stop offset="100%" stop-color="${hexToRgba(p.bg, 0.7)}"/>
+    </linearGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    ${hasImage ? `<filter id="frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="14"/></filter>` : ''}
+    <pattern id="khatam" width="58" height="58" patternUnits="userSpaceOnUse">
+      <g fill="none" stroke="${p.pattern}" stroke-width="1" opacity="0.05">
+        <path d="M0 0 L58 58 M58 0 L0 58"/>
+        <rect x="15" y="15" width="28" height="28" transform="rotate(45 29 29)"/>
+      </g>
+    </pattern>
+  </defs>`;
+}
+
+/** The clock + countdown, drawn centred in a box (clockTop / centered presets). */
+function clockGroup(
+  cx: number,
+  cy: number,
+  size: number,
+  clock: ClockText,
+  showCountdown: boolean,
+  pill: string,
+  p: Palette,
+): string {
+  const out: string[] = [];
+  const periodGap = clock.period ? size * 0.5 : 0;
+  out.push(text(cx - periodGap * 0.5, cy + size * 0.34, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: -1 }));
+  if (clock.period) {
+    out.push(text(cx - periodGap * 0.5 + size * 1.02, cy + size * 0.34, clock.period, { size: size * 0.26, fill: p.textDim, weight: 600, anchor: 'start' }));
+  }
+  if (showCountdown && pill) {
+    const ps = clamp(size * 0.16, 13, 30);
+    const pw = pill.length * ps * 0.6 + ps * 2.2;
+    const ph = ps * 2.2;
+    const px = cx - pw / 2;
+    const py = cy + size * 0.5;
+    out.push(glass(px, py, pw, ph, ph / 2, { fill: GLASS_RAISED }));
+    out.push(text(cx, py + ph * 0.64, pill, { size: ps, fill: p.text, anchor: 'middle', letter: 0.5 }));
+  }
+  return out.join('');
+}
+
+/** A prayer card. Lays out as a tall stacked tile, or — when the cell is much
+ *  wider than tall (a vertical list, e.g. the "split" layout) — as a row. */
+function prayerCard(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: Row,
+  p: Palette,
+  L: Record<string, string>,
+  timeFormat: string,
+): string {
+  const cardR = Math.min(w, h) * 0.14;
+  const fill = r.active ? hexToRgba(p.primary, 0.2) : r.minor ? HAIR_SOFT : GLASS;
+  const stroke = r.active ? p.primary : HAIR;
+  const nameColor = r.active ? p.primarySoft : r.next ? p.goldSoft : p.textDim;
+  const name = L[r.label] ?? r.label;
+  const out: string[] = [];
+  out.push(glass(x, y, w, h, cardR, { fill, stroke, sw: r.active ? 2 : 1, glow: r.active ? p.primary : undefined }));
+
+  if (w / h > 2) {
+    // ── Row (name left, adhan + iqamah right) ──
+    const pad = cardR + Math.min(w, h) * 0.08;
+    if (r.active) out.push(rect(x + cardR * 0.5, y + cardR, Math.max(3, w * 0.01), h - 2 * cardR, 2, p.primarySoft));
+    const nameSize = clamp(h * 0.3, 13, 30);
+    const timeSize = clamp(h * 0.42, 18, 46);
+    const iqSize = clamp(h * 0.22, 10, 22);
+    const rightX = x + w - pad;
+    out.push(text(x + pad, y + h * 0.6, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', letter: 0.5 }));
+    if (r.iqamah != null) {
+      out.push(text(rightX, y + h * 0.46, fmtShort(r.adhan, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+      out.push(text(rightX, y + h * 0.82, `${L.iqamah} ${fmtShort(r.iqamah, timeFormat)}`, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'end' }));
+    } else {
+      out.push(text(rightX, y + h * 0.64, fmtShort(r.adhan, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+    }
+    return out.join('');
+  }
+
+  // ── Tall stacked tile ──
+  const center = x + w / 2;
+  if (r.active) out.push(rect(x + cardR, y + Math.max(2, h * 0.05), w - 2 * cardR, Math.max(2, h * 0.025), 2, p.primarySoft));
+  const nameSize = clamp(Math.min(w * 0.16, h * 0.2), 12, 30);
+  const timeSize = clamp(Math.min(w * 0.3, h * 0.42), 20, 64);
+  const iqSize = clamp(Math.min(w * 0.15, h * 0.16), 10, 26);
+  out.push(text(center, y + h * 0.24 + nameSize * 0.4, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5 }));
+  out.push(text(center, y + h * (r.iqamah != null ? 0.58 : 0.64), fmtShort(r.adhan, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+  if (r.iqamah != null) {
+    out.push(text(center, y + h * 0.87, `${L.iqamah} ${fmtShort(r.iqamah, timeFormat)}`, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
+  }
+  if (r.next) out.push(`<circle cx="${center.toFixed(1)}" cy="${(y + h - h * 0.06).toFixed(1)}" r="${Math.max(2, w * 0.018).toFixed(1)}" fill="${p.gold}"/>`);
+  return out.join('');
+}
+
+/** A grid of prayer cards filling (x,y,w,h) in `cols` columns. */
+function prayerGrid(
+  rows: Row[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  cols: number,
+  p: Palette,
+  L: Record<string, string>,
+  timeFormat: string,
+  gap: number,
+): string {
+  const rowsCount = Math.ceil(rows.length / cols);
+  const cardW = (w - (cols - 1) * gap) / cols;
+  const cardH = (h - (rowsCount - 1) * gap) / rowsCount;
+  return rows
+    .map((r, i) => {
+      const col = i % cols;
+      const rowIdx = Math.floor(i / cols);
+      return prayerCard(x + col * (cardW + gap), y + rowIdx * (cardH + gap), cardW, cardH, r, p, L, timeFormat);
+    })
+    .join('');
+}
+
 /** "Setup needed" frame when no location is configured. */
 function setupNeeded(p: Palette, W: number, H: number, masjidName: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  ${rrect(0, 0, W, H, 0, p.bg)}
+  ${defs(p, false)}
+  ${rect(0, 0, W, H, 0, 'url(#scene)')}
+  ${rect(0, 0, W, H, 0, 'url(#glow)')}
+  ${rect(0, 0, W, H, 0, 'url(#khatam)')}
   ${text(W / 2, H * 0.42, masjidName, { size: clamp(W * 0.04, 28, 64), fill: p.primarySoft, family: FONT_DISPLAY, weight: 600, anchor: 'middle' })}
   ${text(W / 2, H * 0.52, 'This screen needs the masjid location', { size: clamp(W * 0.02, 16, 30), fill: p.text, anchor: 'middle' })}
   ${text(W / 2, H * 0.58, 'Open the control panel and add the latitude and longitude.', { size: clamp(W * 0.015, 13, 22), fill: p.textDim, anchor: 'middle' })}
 </svg>`;
 }
 
-export function renderDisplaySvg(tt: Timetable, now: Date): string {
+export interface RenderOpts {
+  /** data: URI of a custom background image, or null for the themed scene */
+  bg?: string | null;
+}
+
+export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}): string {
   const { width: W, height: H } = dimsFor(tt.orientation, tt.quality);
   const p = getPalette(tt.themeId, tt.accent);
   const L = labels(tt.language);
@@ -250,137 +436,102 @@ export function renderDisplaySvg(tt: Timetable, now: Date): string {
   const nowHours = m.parts.hour + m.parts.minute / 60 + m.parts.second / 3600;
   const clock = fmtClock(nowHours, tt.timeFormat);
 
-  // Countdown to next prayer.
   const remMin = (m.nextHours - nowHours) * 60;
   const ch = Math.floor(remMin / 60);
   const cm = Math.floor(remMin % 60);
   const cs = Math.floor((remMin * 60) % 60);
   const countdown = ch > 0 ? `${ch}h ${pad2(cm)}m` : `${cm}m ${pad2(cs)}s`;
   const nextLabel = L[m.rows.find((r) => r.next)?.label ?? 'fajr'] ?? '';
+  const pillText = `${L.next.toUpperCase()}   ${nextLabel}  ·  ${countdown}`;
 
   const greg = gregorian(m.parts, tt.language, tt.timezone);
   const hij = hijri(m.parts, tt.language);
 
   const portrait = tt.orientation === 'portrait';
-  const P = Math.round(Math.min(W, H) * 0.045);
-
-  // ── Regions ──────────────────────────────────────────────────────────────
-  const mastH = H * (portrait ? 0.11 : 0.14);
-  const footerH = H * 0.06;
-  const gridH = H * (portrait ? 0.42 : 0.34);
-  const gridY = H - P - footerH - gridH;
-  const mastY = P;
-  const clockTop = mastY + mastH;
-  const clockBottom = gridY;
-  const clockCY = (clockTop + clockBottom) / 2;
+  const layout = portrait && tt.layout === 'split' ? 'centered' : tt.layout;
+  const P = Math.round(Math.min(W, H) * 0.05);
+  const hasImage = !!opts.bg;
 
   const out: string[] = [];
+  out.push(defs(p, hasImage));
 
-  // Defs: scene gradient, clock gradient, geometric pattern tile.
-  out.push(`<defs>
-    <radialGradient id="scene" cx="50%" cy="0%" r="120%">
-      <stop offset="0%" stop-color="${p.bg2}"/>
-      <stop offset="60%" stop-color="${p.bg}"/>
-    </radialGradient>
-    <linearGradient id="clockg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${p.text}"/>
-      <stop offset="100%" stop-color="${p.textDim}"/>
-    </linearGradient>
-    <pattern id="khatam" width="56" height="56" patternUnits="userSpaceOnUse" patternTransform="rotate(0)">
-      <g fill="none" stroke="${p.pattern}" stroke-width="1" opacity="0.05">
-        <path d="M0 0 L56 56 M56 0 L0 56"/>
-        <rect x="14" y="14" width="28" height="28" transform="rotate(45 28 28)"/>
-      </g>
-    </pattern>
-  </defs>`);
+  // ── Background ────────────────────────────────────────────────────────────
+  if (hasImage) {
+    out.push(`<image href="${opts.bg}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" filter="url(#frost)"/>`);
+    out.push(rect(0, 0, W, H, 0, 'url(#scrim)'));
+  } else {
+    out.push(rect(0, 0, W, H, 0, 'url(#scene)'));
+    out.push(rect(0, 0, W, H, 0, 'url(#glow)'));
+  }
+  out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
 
-  // Background.
-  out.push(rrect(0, 0, W, H, 0, 'url(#scene)'));
-  out.push(rrect(0, 0, W, H, 0, 'url(#khatam)'));
-
-  // ── Masthead ───────────────────────────────────────────────────────────
+  // ── Masthead (logo + name + dates) ─────────────────────────────────────────
+  const mastH = H * (portrait ? 0.11 : 0.15);
+  const mastY = P;
   const markSize = mastH * 0.62;
   if (portrait) {
-    // Centered stack on portrait.
-    out.push(mark(W / 2 - markSize / 2, mastY, markSize, p.primary));
-    out.push(text(W / 2, mastY + mastH * 0.86, tt.masjidName, { size: clamp(W * 0.06, 26, 72), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+    if (tt.showLogo) out.push(mark(W / 2 - markSize / 2, mastY, markSize, p.primary));
+    out.push(text(W / 2, mastY + mastH * 0.9, tt.masjidName, { size: clamp(W * 0.06, 26, 72), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+    if (tt.showDates) {
+      if (hij) out.push(text(W / 2, mastY + mastH * 1.2, hij, { size: clamp(W * 0.03, 14, 30), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'middle' }));
+      out.push(text(W / 2, mastY + mastH * 1.42, greg, { size: clamp(W * 0.022, 12, 22), fill: p.textDim, anchor: 'middle' }));
+    }
   } else {
-    const markY = mastY + (mastH - markSize) / 2;
-    out.push(mark(P, markY, markSize, p.primary));
-    out.push(text(P + markSize + W * 0.012, mastY + mastH * 0.64, tt.masjidName, { size: clamp(mastH * 0.5, 24, 64), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
-    if (hij) out.push(text(W - P, mastY + mastH * 0.42, hij, { size: clamp(mastH * 0.3, 16, 34), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
-    out.push(text(W - P, mastY + mastH * 0.78, greg, { size: clamp(mastH * 0.22, 13, 24), fill: p.textDim, anchor: 'end' }));
-  }
-  if (portrait) {
-    if (hij) out.push(text(W / 2, mastY + mastH * 1.18, hij, { size: clamp(W * 0.03, 14, 30), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'middle' }));
-    out.push(text(W / 2, mastY + mastH * 1.42, greg, { size: clamp(W * 0.022, 12, 22), fill: p.textDim, anchor: 'middle' }));
-  }
-
-  // ── Clock + next-up pill ─────────────────────────────────────────────────
-  const clockSize = clamp(Math.min(W * (portrait ? 0.2 : 0.16), (clockBottom - clockTop) * 0.62), 60, 240);
-  const periodSize = clockSize * 0.28;
-  const clockBaseline = clockCY + clockSize * 0.18;
-  const timeStr = clock.time;
-  // Center the time+period group; approximate period width.
-  const periodGap = clock.period ? clockSize * 0.18 : 0;
-  out.push(text(W / 2 - (clock.period ? periodGap * 0.5 : 0), clockBaseline, timeStr, { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: -1 }));
-  if (clock.period) {
-    out.push(text(W / 2 + clockSize * 1.1, clockBaseline, clock.period, { size: periodSize, fill: p.textDim, weight: 600, anchor: 'start' }));
-  }
-
-  // Next-up pill.
-  const pillText = `${L.next.toUpperCase()}   ${nextLabel}  ·  ${countdown}`;
-  const pillSize = clamp(Math.min(W, H) * 0.022, 14, 30);
-  const pillW = Math.min(W * 0.7, pillText.length * pillSize * 0.62 + pillSize * 2);
-  const pillH = pillSize * 2.1;
-  const pillX = W / 2 - pillW / 2;
-  const pillY = clockBaseline + clockSize * 0.28;
-  out.push(rrect(pillX, pillY, pillW, pillH, pillH / 2, p.surface, `stroke="${p.border}" stroke-width="1"`));
-  out.push(text(W / 2, pillY + pillH * 0.65, pillText, { size: pillSize, fill: p.textDim, anchor: 'middle', letter: 0.5 }));
-
-  // ── Prayer grid ───────────────────────────────────────────────────────────
-  const cols = portrait ? 2 : m.rows.length;
-  const rowsCount = Math.ceil(m.rows.length / cols);
-  const gap = Math.min(W, H) * 0.012;
-  const gridX = P;
-  const gridW = W - 2 * P;
-  const cardW = (gridW - (cols - 1) * gap) / cols;
-  const cardH = (gridH - (rowsCount - 1) * gap) / rowsCount;
-  const cardR = Math.min(cardW, cardH) * 0.14;
-
-  m.rows.forEach((r, i) => {
-    const col = i % cols;
-    const rowIdx = Math.floor(i / cols);
-    const cx = gridX + col * (cardW + gap);
-    const cy = gridY + rowIdx * (cardH + gap);
-    const center = cx + cardW / 2;
-    const fill = r.active ? p.surface2 : p.surface;
-    const stroke = r.active ? p.primary : p.border;
-    const sw = r.active ? 2 : 1;
-    out.push(rrect(cx, cy, cardW, cardH, cardR, fill, `stroke="${stroke}" stroke-width="${sw}" ${r.minor ? 'opacity="0.72"' : ''}`));
-    if (r.active) out.push(rrect(cx + cardR, cy, cardW - 2 * cardR, Math.max(2, cardH * 0.03), 2, p.primary));
-
-    const nameSize = clamp(cardW * 0.16, 13, 30);
-    const timeSize = clamp(cardW * 0.3, 22, 60);
-    const iqLabelSize = clamp(cardW * 0.1, 9, 18);
-    const iqTimeSize = clamp(cardW * 0.16, 13, 30);
-
-    const nameColor = r.active ? p.primarySoft : r.next ? p.goldSoft : p.textDim;
-    out.push(text(center, cy + cardH * 0.2 + nameSize * 0.5, L[r.label] ?? r.label, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5 }));
-    out.push(text(center, cy + cardH * (r.iqamah != null ? 0.56 : 0.62), fmtShort(r.adhan, tt.timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
-    if (r.iqamah != null) {
-      out.push(text(center, cy + cardH * 0.86, `${L.iqamah} ${fmtShort(r.iqamah, tt.timeFormat)}`, { size: iqTimeSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
-      void iqLabelSize;
+    let nameX = P;
+    if (tt.showLogo) {
+      out.push(mark(P, mastY + (mastH - markSize) / 2, markSize, p.primary));
+      nameX = P + markSize + W * 0.012;
     }
-    if (r.next) {
-      out.push(`<circle cx="${center.toFixed(1)}" cy="${(cy + cardH - cardH * 0.06).toFixed(1)}" r="${Math.max(2, cardW * 0.018).toFixed(1)}" fill="${p.gold}"/>`);
+    out.push(text(nameX, mastY + mastH * 0.62, tt.masjidName, { size: clamp(mastH * 0.46, 24, 64), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
+    if (tt.showDates) {
+      if (hij) out.push(text(W - P, mastY + mastH * 0.42, hij, { size: clamp(mastH * 0.28, 16, 34), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
+      out.push(text(W - P, mastY + mastH * 0.74, greg, { size: clamp(mastH * 0.2, 13, 24), fill: p.textDim, anchor: 'end' }));
     }
-  });
+  }
 
-  // ── Footer ─────────────────────────────────────────────────────────────
+  // ── Body regions per layout ────────────────────────────────────────────────
+  const footerH = H * 0.05;
+  const bodyTop = mastY + mastH * (portrait && tt.showDates ? 1.55 : 1.15);
+  const bodyBottom = H - P - footerH;
+  const gap = Math.min(W, H) * 0.014;
+
+  if (layout === 'split') {
+    // Left: clock + countdown in a tall glass panel. Right: vertical prayer list.
+    const colGap = gap * 1.5;
+    const leftW = (W - 2 * P - colGap) * 0.42;
+    const leftX = P;
+    const rightX = leftX + leftW + colGap;
+    const rightW = W - P - rightX;
+    const panelY = bodyTop;
+    const panelH = bodyBottom - bodyTop;
+    out.push(glass(leftX, panelY, leftW, panelH, Math.min(leftW, panelH) * 0.06));
+    const clockSize = clamp(leftW * 0.34, 60, 200);
+    out.push(clockGroup(leftX + leftW / 2, panelY + panelH * 0.4, clockSize, clock, tt.showCountdown, pillText, p));
+    out.push(prayerGrid(m.rows, rightX, panelY, rightW, panelH, 1, p, L, tt.timeFormat, gap));
+  } else if (layout === 'clockTop') {
+    // Clock band right under the masthead, grid fills the rest.
+    const bandH = (bodyBottom - bodyTop) * 0.3;
+    const bandY = bodyTop;
+    out.push(glass(P, bandY, W - 2 * P, bandH, Math.min(W, bandH) * 0.05));
+    const clockSize = clamp(bandH * 0.5, 50, 170);
+    out.push(clockGroup(W / 2, bandY + bandH * (tt.showCountdown ? 0.36 : 0.46), clockSize, clock, tt.showCountdown, pillText, p));
+    const gridY = bandY + bandH + gap * 1.5;
+    const cols = portrait ? 2 : m.rows.length;
+    out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, bodyBottom - gridY, cols, p, L, tt.timeFormat, gap));
+  } else {
+    // centered: clock floats between masthead and a bottom grid.
+    const gridH = (bodyBottom - bodyTop) * (portrait ? 0.5 : 0.42);
+    const gridY = bodyBottom - gridH;
+    const clockSize = clamp(Math.min(W * (portrait ? 0.2 : 0.15), (gridY - bodyTop) * 0.5), 60, 240);
+    out.push(clockGroup(W / 2, (bodyTop + gridY) / 2 - clockSize * 0.1, clockSize, clock, tt.showCountdown, pillText, p));
+    const cols = portrait ? 2 : m.rows.length;
+    out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, gridH, cols, p, L, tt.timeFormat, gap));
+  }
+
+  // ── Footer ─────────────────────────────────────────────────────────────────
   const methodNote = `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
-  const footer = tt.footerNote ? `${tt.footerNote}` : methodNote;
-  out.push(text(W / 2, H - P - footerH * 0.1, footer, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5 }));
+  const footer = tt.footerNote ? tt.footerNote : methodNote;
+  out.push(text(W / 2, H - P * 0.5, footer, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5 }));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }

@@ -52,7 +52,9 @@ Paths the app no longer needs (`tv_*`, `src_*`) are deleted on reconcile. RTSP i
 
 Per active timetable, one pipeline runs:
 
-1. Once per second, the current state is built into an **SVG** (`render/svg.ts`).
+1. Once per second, the current state is built into an **SVG** (`render/svg.ts`) — a liquid-glass design
+   honouring the timetable's layout preset (centered / clock-top / split), element toggles, theme/accent,
+   and an optional custom background (frosted and inlined as a data: URI by `render/background.ts`).
 2. resvg (`@resvg/resvg-js`, bundled native binary, fonts baked into the image) rasterises it to raw RGBA.
 3. The RGBA frame is piped to **ffmpeg**, which upsamples to a steady ~15 fps and encodes H.264:
    `libx264 -preset ultrafast -tune zerolatency -profile baseline`, a fixed 2-second GOP, in-band SPS/PPS

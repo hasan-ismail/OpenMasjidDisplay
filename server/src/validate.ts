@@ -101,6 +101,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     accent,
     orientation: oneOf(o.orientation, ['landscape', 'portrait'] as const, base?.orientation ?? 'landscape') as Orientation,
     quality: oneOf(o.quality, ['720p', '1080p'] as const, base?.quality ?? '720p') as Quality,
+    layout: oneOf(o.layout, ['centered', 'clockTop', 'split'] as const, base?.layout ?? 'centered'),
     masjidName: str(o.masjidName, base?.masjidName ?? 'Our Masjid', 80) || 'Our Masjid',
     latitude: o.latitude === undefined ? base?.latitude ?? null : geoOrNull(o.latitude, -90, 90),
     longitude: o.longitude === undefined ? base?.longitude ?? null : geoOrNull(o.longitude, -180, 180),
@@ -112,6 +113,11 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     iqamah: o.iqamah ? normIqamah(o.iqamah) : base?.iqamah ?? defaultIqamah(),
     jumuah: jumuah.length ? jumuah : ['13:30'],
     showSunrise: o.showSunrise === undefined ? base?.showSunrise ?? true : bool(o.showSunrise, true),
+    showCountdown: o.showCountdown === undefined ? base?.showCountdown ?? true : bool(o.showCountdown, true),
+    showDates: o.showDates === undefined ? base?.showDates ?? true : bool(o.showDates, true),
+    showLogo: o.showLogo === undefined ? base?.showLogo ?? true : bool(o.showLogo, true),
+    // backgroundImage is managed only by the upload/delete endpoints, never trusted from the form body.
+    backgroundImage: base?.backgroundImage ?? '',
     footerNote: str(o.footerNote, base?.footerNote ?? '', 160),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };

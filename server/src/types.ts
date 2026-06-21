@@ -8,6 +8,8 @@
 
 export type Quality = '720p' | '1080p';
 export type Orientation = 'landscape' | 'portrait';
+/** Arrangement preset for the on-screen layout (see render/svg.ts). */
+export type TimetableLayout = 'centered' | 'clockTop' | 'split';
 export type Lang = 'en' | 'ar' | 'ur';
 export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi' | 'Tehran' | 'Jafari';
 export type AsrMadhab = 'Standard' | 'Hanafi';
@@ -40,6 +42,8 @@ export interface Timetable {
   accent?: string;
   orientation: Orientation;
   quality: Quality;
+  /** on-screen arrangement preset */
+  layout: TimetableLayout;
   masjidName: string;
   latitude: number | null;
   longitude: number | null;
@@ -53,6 +57,12 @@ export interface Timetable {
   /** Friday khutbah/Jumu'ah times "HH:MM" (one or more) */
   jumuah: string[];
   showSunrise: boolean;
+  /** element toggles for the on-screen display */
+  showCountdown: boolean;
+  showDates: boolean;
+  showLogo: boolean;
+  /** filename of an uploaded custom background under /data/uploads ('' = themed scene) */
+  backgroundImage: string;
   footerNote: string;
   createdAt: string;
 }
