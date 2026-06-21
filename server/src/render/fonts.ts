@@ -7,6 +7,11 @@ import { makeLog } from '../logger';
 const log = makeLog('fonts');
 
 const WANT = /(NotoSerif|NotoSans|NotoNaskhArabic|NotoSansArabic|DejaVuSans|DejaVuSerif)/i;
+// Just the BASE families we actually use (Regular/Bold). This deliberately EXCLUDES
+// script-specific fonts like NotoSansThai / NotoSansHebrew — loading dozens of those
+// per frame is slow, and if the base Latin font gets crowded out, resvg can hang on
+// glyph fallback (which bricks the render loop and the RTSP publisher).
+const BASE = /(NotoSans|NotoSerif|NotoNaskhArabic|NotoSansArabic)-(Regular|Bold)\.(ttf|otf)$|DejaVuSans(-Bold)?\.ttf$|DejaVuSerif(-Bold)?\.ttf$/i;
 const DIRS = ['/usr/share/fonts', '/usr/local/share/fonts'];
 
 export interface ResvgFontOptions {
@@ -38,9 +43,10 @@ export function fontOptions(): ResvgFontOptions {
   }
   if (files.length > 0) {
     // We construct a Resvg renderer per video frame, so it parses these files every
-    // frame — keep it to just the Regular/Bold weights of the families we use.
-    const preferred = files.filter((f) => /(-Regular|-Bold)\.(ttf|otf)$|DejaVuSans(-Bold)?\.ttf$|DejaVuSerif\.ttf$/i.test(f));
-    const use = (preferred.length ? preferred : files).slice(0, 12);
+    // frame — load only the base Latin + Arabic families (a handful), and always keep
+    // the reliable DejaVu fallbacks.
+    const base = files.filter((f) => BASE.test(f));
+    const use = (base.length ? base : files).slice(0, 16);
     log.info(`using ${use.length} of ${files.length} bundled font file(s) for rendering`);
     cached = {
       fontFiles: use,
