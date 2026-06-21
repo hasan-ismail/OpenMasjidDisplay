@@ -6,6 +6,7 @@ import type {
   ScheduleRule,
   Settings,
   ContentRef,
+  Hotspot,
 } from './types';
 
 let onUnauth: () => void = () => {};
@@ -58,6 +59,15 @@ export const api = {
   uploadBackground: (id: string, dataUrl: string) =>
     req<Timetable>('POST', `/api/timetables/${id}/background`, { data: dataUrl }),
   removeBackground: (id: string) => req<Timetable>('DELETE', `/api/timetables/${id}/background`),
+  uploadLogo: (id: string, dataUrl: string) =>
+    req<Timetable>('POST', `/api/timetables/${id}/logo`, { data: dataUrl }),
+  removeLogo: (id: string) => req<Timetable>('DELETE', `/api/timetables/${id}/logo`),
+
+  importIqamahCsv: (id: string, csvText: string) =>
+    req<{ ok: boolean; rows: number; errors: string[] }>('POST', `/api/timetables/${id}/iqamah-csv`, { data: csvText }),
+  clearIqamahCsv: (id: string) => req<Timetable>('DELETE', `/api/timetables/${id}/iqamah-csv`),
+  iqamahCsvUrl: (id: string, mode?: 'template') =>
+    `/api/timetables/${id}/iqamah-csv${mode ? `?mode=${mode}` : ''}`,
 
   /** Live PNG preview of an unsaved timetable form; returns an object URL. */
   previewLive: async (body: Partial<Timetable>): Promise<string> => {
@@ -74,6 +84,9 @@ export const api = {
     if (!res.ok) throw new Error('Could not render the preview.');
     return URL.createObjectURL(await res.blob());
   },
+
+  /** Click-to-edit text regions for the live editor. */
+  previewMeta: (body: Partial<Timetable>) => req<{ hotspots: Hotspot[] }>('POST', '/api/preview-meta', body),
 
   createSource: (b: Partial<Source>) => req<Source>('POST', '/api/sources', b),
   updateSource: (id: string, b: Partial<Source>) => req<Source>('PUT', `/api/sources/${id}`, b),

@@ -17,7 +17,7 @@
 import { parentPort } from 'node:worker_threads';
 import { Resvg } from '@resvg/resvg-js';
 import { renderDisplaySvg } from './svg';
-import { backgroundDataUri } from './background';
+import { backgroundDataUri, logoDataUri } from './background';
 import { fontOptions } from './fonts';
 import type { Timetable } from '../types';
 
@@ -26,20 +26,39 @@ const port = parentPort;
 
 interface Req {
   id: number;
-  kind: 'raw' | 'png';
+  kind: 'raw' | 'png' | 'meta';
   tt: Timetable;
   nowMs: number;
   width?: number;
   bgFile?: string;
+  logoFile?: string;
+}
+
+/** Resolve the background + logo data URIs for a timetable (cached by mtime). An
+ *  override (from the raw form body) is used when given, else the stored field. */
+function assets(tt: Timetable, bgOverride?: string, logoOverride?: string): { bg: string | null; logo: string | null } {
+  const bgFile = bgOverride !== undefined ? bgOverride : tt.backgroundImage;
+  const logoFile = logoOverride !== undefined ? logoOverride : tt.logoImage;
+  return {
+    bg: bgFile ? backgroundDataUri(bgFile) : null,
+    logo: logoFile ? logoDataUri(logoFile) : null,
+  };
 }
 
 port.on('message', (msg: Req) => {
   const { id, kind, tt, nowMs } = msg;
   try {
     const now = new Date(typeof nowMs === 'number' ? nowMs : Date.now());
+    if (kind === 'meta') {
+      // Just collect the click-to-edit regions; no rasterization (cheap).
+      const sink = { hotspots: [] as unknown[] };
+      renderDisplaySvg(tt, now, { sink: sink as never });
+      port.postMessage({ id, ok: true, hotspots: sink.hotspots });
+      return;
+    }
     if (kind === 'png') {
-      const bg = msg.bgFile ? backgroundDataUri(msg.bgFile) : null;
-      const svg = renderDisplaySvg(tt, now, { bg });
+      const { bg, logo } = assets(tt, msg.bgFile, msg.logoFile);
+      const svg = renderDisplaySvg(tt, now, { bg, logo });
       const png = new Resvg(svg, {
         font: fontOptions(),
         fitTo: { mode: 'width', value: msg.width ?? 960 },
@@ -54,8 +73,8 @@ port.on('message', (msg: Req) => {
       return;
     }
     // raw RGBA for the video pipeline
-    const bg = tt.backgroundImage ? backgroundDataUri(tt.backgroundImage) : null;
-    const svg = renderDisplaySvg(tt, now, { bg });
+    const { bg, logo } = assets(tt);
+    const svg = renderDisplaySvg(tt, now, { bg, logo });
     const r = new Resvg(svg, { font: fontOptions() }).render();
     const px = r.pixels;
     const ab = new ArrayBuffer(px.byteLength);

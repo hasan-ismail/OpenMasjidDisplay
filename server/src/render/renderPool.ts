@@ -24,6 +24,14 @@ interface Pending {
   resolve: (m: WorkerMsg) => void;
   reject: (e: Error) => void;
 }
+export interface Hotspot {
+  id: string;
+  value: string;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+}
 interface WorkerMsg {
   id: number;
   ok: boolean;
@@ -31,6 +39,7 @@ interface WorkerMsg {
   width?: number;
   height?: number;
   buf?: ArrayBuffer;
+  hotspots?: Hotspot[];
 }
 
 export class RenderWorker {
@@ -81,10 +90,17 @@ export class RenderWorker {
     return { width: m.width ?? 0, height: m.height ?? 0, pixels: Buffer.from(m.buf as ArrayBuffer) };
   }
 
-  /** A downscaled PNG for the control-panel preview. */
-  async png(tt: Timetable, nowMs: number, width: number, bgFile: string): Promise<Buffer> {
-    const m = await this.request({ kind: 'png', tt, nowMs, width, bgFile });
+  /** A downscaled PNG for the control-panel preview. `bgFile`/`logoFile` come from
+   *  the raw form body (which the validator strips), so unsaved uploads still show. */
+  async png(tt: Timetable, nowMs: number, width: number, bgFile: string, logoFile: string): Promise<Buffer> {
+    const m = await this.request({ kind: 'png', tt, nowMs, width, bgFile, logoFile });
     return Buffer.from(m.buf as ArrayBuffer);
+  }
+
+  /** Click-to-edit text regions for the live editor (fractional coordinates). */
+  async meta(tt: Timetable, nowMs: number): Promise<Hotspot[]> {
+    const m = await this.request({ kind: 'meta', tt, nowMs });
+    return m.hotspots ?? [];
   }
 
   dispose(): void {
@@ -100,7 +116,12 @@ export class RenderWorker {
 // Shared worker for one-off preview renders (created on first use).
 let previewWorker: RenderWorker | null = null;
 
-export function renderPreviewPng(tt: Timetable, nowMs: number, width: number, bgFile: string): Promise<Buffer> {
+export function renderPreviewPng(tt: Timetable, nowMs: number, width: number, bgFile: string, logoFile: string): Promise<Buffer> {
   if (!previewWorker) previewWorker = new RenderWorker();
-  return previewWorker.png(tt, nowMs, width, bgFile);
+  return previewWorker.png(tt, nowMs, width, bgFile, logoFile);
+}
+
+export function renderPreviewMeta(tt: Timetable, nowMs: number): Promise<Hotspot[]> {
+  if (!previewWorker) previewWorker = new RenderWorker();
+  return previewWorker.meta(tt, nowMs);
 }

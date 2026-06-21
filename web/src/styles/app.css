@@ -277,6 +277,19 @@ h1, h2, h3, p { margin: 0; }
 .studio-canvas--portrait { aspect-ratio: 9 / 16; max-width: 300px; margin-inline: auto; }
 .studio-canvas__img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .studio-canvas__overlay { position: absolute; inset: 0; display: grid; place-items: center; }
+/* Click-to-edit hotspots over the live preview image. */
+.studio-canvas .hot {
+  position: absolute; margin: 0; padding: 0; border: 0; background: transparent;
+  border-radius: 4px; cursor: text; transition: background-color var(--dur-micro) ease, box-shadow var(--dur-micro) ease;
+}
+.studio-canvas .hot:hover { background: rgba(255,255,255,0.14); box-shadow: inset 0 0 0 1px var(--color-primary); }
+.studio-canvas .hot-input {
+  position: absolute; margin: 0; padding: 0 0.2rem; min-width: 3rem;
+  border: 1px solid var(--color-primary); border-radius: 4px;
+  background: var(--color-surface); color: var(--color-ink);
+  font: inherit; font-size: 0.8rem; z-index: 3;
+}
+@media (prefers-reduced-motion: reduce) { .studio-canvas .hot { transition: none; } }
 .toggle-list { display: flex; flex-direction: column; }
 .toggle-row { padding-block: 0.5rem; border-block-end: 1px solid var(--color-border); }
 .toggle-row:last-child { border-block-end: 0; }

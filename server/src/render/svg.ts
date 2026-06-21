@@ -49,6 +49,40 @@ const HAIR_SOFT = 'rgba(255,255,255,0.09)';
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
+/** Rough rendered width of a string at a given font size (no real metrics; good
+ *  enough to place an AM/PM marker and to size click-to-edit hotspots). */
+function approxWidth(s: string, size: number): number {
+  let w = 0;
+  for (const ch of s) {
+    if (ch === ':' || ch === '.' || ch === ' ' || ch === "'") w += 0.3;
+    else if (/[0-9]/.test(ch)) w += 0.56;
+    else if (/[A-Z]/.test(ch)) w += 0.64;
+    else w += 0.52;
+  }
+  return w * size;
+}
+
+/** A click-to-edit region collected during a render (only when a sink is given);
+ *  coordinates are fractions of the canvas so the UI can overlay them at any size. */
+export interface Hotspot {
+  id: string;
+  /** the text currently rendered there (used to prefill the edit field) */
+  value: string;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+}
+interface RawHotspot {
+  id: string;
+  value: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+let HOT: RawHotspot[] | null = null;
+
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -69,15 +103,27 @@ interface ClockText {
   period: string;
 }
 
-function fmtClock(hours: number, timeFormat: string): ClockText {
-  let total = Math.round(hours * 60);
-  total = ((total % 1440) + 1440) % 1440;
-  let h = Math.floor(total / 60);
-  const m = total % 60;
-  if (timeFormat === '24h') return { time: `${pad2(h)}:${pad2(m)}`, period: '' };
+function fmtClock(hours: number, timeFormat: string, withSeconds = false): ClockText {
+  let h: number, m: number, s = 0;
+  if (withSeconds) {
+    // Second precision (floor) — a live wall clock shouldn't round the minute up.
+    let total = Math.floor(hours * 3600);
+    total = ((total % 86400) + 86400) % 86400;
+    h = Math.floor(total / 3600);
+    m = Math.floor((total % 3600) / 60);
+    s = total % 60;
+  } else {
+    // Minute precision (round) — matches the conventional prayer-time display.
+    let total = Math.round(hours * 60);
+    total = ((total % 1440) + 1440) % 1440;
+    h = Math.floor(total / 60);
+    m = total % 60;
+  }
+  const sec = withSeconds ? `:${pad2(s)}` : '';
+  if (timeFormat === '24h') return { time: `${pad2(h)}:${pad2(m)}${sec}`, period: '' };
   const period = h >= 12 ? 'PM' : 'AM';
   h = h % 12 || 12;
-  return { time: `${h}:${pad2(m)}`, period };
+  return { time: `${h}:${pad2(m)}${sec}`, period };
 }
 
 function fmtShort(hours: number | null, timeFormat: string): string {
@@ -116,6 +162,8 @@ interface TextOpts {
   anchor?: 'start' | 'middle' | 'end';
   letter?: number;
   opacity?: number;
+  /** marks this text as click-to-edit in the live editor (collected into a sink) */
+  editId?: string;
 }
 
 function text(x: number, baseline: number, content: string, o: TextOpts): string {
@@ -131,6 +179,12 @@ function text(x: number, baseline: number, content: string, o: TextOpts): string
     o.opacity != null ? `opacity="${o.opacity}"` : '',
     'font-variant-numeric="tabular-nums"',
   ].filter(Boolean);
+  if (HOT && o.editId) {
+    const w = Math.max(o.size * 1.2, approxWidth(content, o.size) + (o.letter ?? 0) * Math.max(0, content.length - 1));
+    const anchor = o.anchor ?? 'start';
+    const left = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
+    HOT.push({ id: o.editId, value: content, x: left - o.size * 0.15, y: baseline - o.size * 0.92, w: w + o.size * 0.3, h: o.size * 1.28 });
+  }
   return `<text ${attrs.join(' ')}>${esc(content)}</text>`;
 }
 
@@ -161,12 +215,17 @@ function glass(
   }
   parts.push(rect(x, y, w, h, r, fill));
   parts.push(rect(x, y, w, h, r, 'url(#sheen)'));
+  parts.push(rect(x, y, w, h, r, 'url(#litsheen)')); // light from the sun/moon falls on the glass
   parts.push(rect(x, y, w, h, r, 'none', `stroke="${stroke}" stroke-width="${sw}"`));
   return parts.join('');
 }
 
-/** Small dome + mihrab-arch brand mark in the primary colour. */
-function mark(x: number, y: number, size: number, color: string): string {
+/** The masjid brand: an uploaded logo image if provided, else the built-in
+ *  dome + mihrab-arch mark in the primary colour. */
+function mark(x: number, y: number, size: number, color: string, logo?: string | null): string {
+  if (logo) {
+    return `<image href="${logo}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${size.toFixed(1)}" height="${size.toFixed(1)}" preserveAspectRatio="xMidYMid meet"/>`;
+  }
   const s = size / 48;
   const t = `translate(${x.toFixed(1)},${y.toFixed(1)}) scale(${s.toFixed(3)})`;
   return `<g transform="${t}" fill="${color}">
@@ -192,8 +251,13 @@ const PRAYER_LABELS: Record<string, Record<string, string>> = {
   ur: { fajr: 'فجر', sunrise: 'طلوع', dhuhr: 'ظہر', asr: 'عصر', maghrib: 'مغرب', isha: 'عشاء', jumuah: 'جمعہ', iqamah: 'اقامہ', athan: 'اذان', next: 'اگلی نماز' },
 };
 
-function labels(lang: string): Record<string, string> {
-  return PRAYER_LABELS[lang] ?? PRAYER_LABELS.en;
+function labels(lang: string, overrides?: Record<string, string>): Record<string, string> {
+  const base = PRAYER_LABELS[lang] ?? PRAYER_LABELS.en;
+  if (!overrides) return base;
+  // Only non-empty overrides win, so clearing a custom label restores the default.
+  const merged: Record<string, string> = { ...base };
+  for (const [k, v] of Object.entries(overrides)) if (typeof v === 'string' && v.trim()) merged[k] = v;
+  return merged;
 }
 
 interface Model {
@@ -240,13 +304,22 @@ function buildModel(tt: Timetable, now: Date): Model {
 
   const isFriday = dayOfWeek(now, tz) === 5;
 
-  const iq = (k: keyof typeof tt.iqamah, adhan: number) => iqamahHours(adhan, tt.iqamah[k]);
+  // A CSV-imported per-day override (keyed by month-day) wins over the rule.
+  const dayKey = `${pad2(parts.month)}-${pad2(parts.day)}`;
+  const yearRow = tt.iqamahYear?.[dayKey];
+  const iq = (k: keyof typeof tt.iqamah, adhan: number): number | null => {
+    const csv = yearRow?.[k];
+    const csvH = csv ? parseHHMM(csv) : null;
+    if (csvH != null) return csvH;
+    return iqamahHours(adhan, tt.iqamah[k]);
+  };
   const rows: Row[] = [];
   rows.push({ key: 'fajr', label: 'fajr', adhan: times.fajr, iqamah: iq('fajr', times.fajr) });
   if (tt.showSunrise) rows.push({ key: 'sunrise', label: 'sunrise', adhan: times.sunrise, iqamah: null, minor: true });
   if (isFriday) {
     const j = tt.jumuah.map(parseHHMM).filter((x): x is number => x != null);
-    rows.push({ key: 'dhuhr', label: 'jumuah', adhan: j[0] ?? times.dhuhr, iqamah: j[1] ?? null });
+    const jIq = yearRow?.jumuah ? parseHHMM(yearRow.jumuah) : null;
+    rows.push({ key: 'dhuhr', label: 'jumuah', adhan: j[0] ?? times.dhuhr, iqamah: jIq ?? j[1] ?? null });
   } else {
     rows.push({ key: 'dhuhr', label: 'dhuhr', adhan: times.dhuhr, iqamah: iq('dhuhr', times.dhuhr) });
   }
@@ -301,24 +374,41 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
       <stop offset="45%" stop-color="${hexToRgba(p.primary, 0.12)}"/>
       <stop offset="100%" stop-color="${hexToRgba(p.primary, 0)}"/>
     </radialGradient>
-    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#fff6d8"/>
-      <stop offset="45%" stop-color="#ffe49b"/>
-      <stop offset="100%" stop-color="${hexToRgba('#f5b942', 0)}"/>
+    <radialGradient id="suncorona" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="${hexToRgba('#fff4cf', 0.55)}"/>
+      <stop offset="30%" stop-color="${hexToRgba('#ffd98a', 0.32)}"/>
+      <stop offset="62%" stop-color="${hexToRgba('#ffb74d', 0.12)}"/>
+      <stop offset="100%" stop-color="${hexToRgba('#ffb74d', 0)}"/>
     </radialGradient>
-    <radialGradient id="moon" cx="40%" cy="38%" r="65%">
-      <stop offset="0%" stop-color="#f4f7ff"/>
-      <stop offset="65%" stop-color="#d6def0"/>
-      <stop offset="100%" stop-color="#aab8d6"/>
+    <radialGradient id="sun" cx="50%" cy="48%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="42%" stop-color="#fff1c2"/>
+      <stop offset="78%" stop-color="#ffd97a"/>
+      <stop offset="100%" stop-color="#ffc24d"/>
+    </radialGradient>
+    <radialGradient id="sunray" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="${hexToRgba('#ffe9b0', 0.5)}"/>
+      <stop offset="100%" stop-color="${hexToRgba('#ffe9b0', 0)}"/>
+    </radialGradient>
+    <radialGradient id="moon" cx="38%" cy="34%" r="68%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="55%" stop-color="#dde4f4"/>
+      <stop offset="100%" stop-color="#b6c2dc"/>
     </radialGradient>
     <radialGradient id="moonglow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="${hexToRgba('#cdd9f2', 0.5)}"/>
+      <stop offset="0%" stop-color="${hexToRgba('#cdd9f2', 0.45)}"/>
+      <stop offset="60%" stop-color="${hexToRgba('#cdd9f2', 0.12)}"/>
       <stop offset="100%" stop-color="${hexToRgba('#cdd9f2', 0)}"/>
     </radialGradient>
     <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="rgba(255,255,255,0.18)"/>
       <stop offset="42%" stop-color="rgba(255,255,255,0.03)"/>
       <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <linearGradient id="litsheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${hexToRgba(glowColor, cel.isDay ? 0.22 : 0.14)}"/>
+      <stop offset="55%" stop-color="${hexToRgba(glowColor, 0)}"/>
+      <stop offset="100%" stop-color="${hexToRgba(glowColor, 0)}"/>
     </linearGradient>
     <linearGradient id="clockg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffffff"/>
@@ -339,23 +429,85 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
   </defs>`;
 }
 
-/** The sun (day) or moon (night) — soft edges come from the gradient fade, not a
- *  blur filter, so each video frame stays cheap to rasterize. */
+/** A soft sunburst: tapered rays radiating from (cx,cy). Edges fade via the
+ *  #sunray gradient, so it reads as light, not hard spikes (and stays blur-free). */
+function sunburst(cx: number, cy: number, r: number): string {
+  const N = 16;
+  const inner = r * 1.15;
+  const out: string[] = [`<g opacity="0.5">`];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const long = i % 2 === 0;
+    const len = inner + r * (long ? 2.6 : 1.5);
+    const halfBase = r * 0.16;
+    // tip
+    const tx = cx + Math.cos(a) * len;
+    const ty = cy + Math.sin(a) * len;
+    // two base points perpendicular to the ray direction
+    const px = Math.cos(a + Math.PI / 2);
+    const py = Math.sin(a + Math.PI / 2);
+    const b1x = cx + Math.cos(a) * inner + px * halfBase;
+    const b1y = cy + Math.sin(a) * inner + py * halfBase;
+    const b2x = cx + Math.cos(a) * inner - px * halfBase;
+    const b2y = cy + Math.sin(a) * inner - py * halfBase;
+    out.push(
+      `<path d="M${b1x.toFixed(1)} ${b1y.toFixed(1)} L${tx.toFixed(1)} ${ty.toFixed(1)} L${b2x.toFixed(1)} ${b2y.toFixed(1)} Z" fill="url(#sunray)" opacity="${long ? 0.7 : 0.45}"/>`,
+    );
+  }
+  out.push(`</g>`);
+  return out.join('');
+}
+
+/** The sun (day) or moon (night) — soft edges come from gradient fades, not a blur
+ *  filter, so each video frame stays cheap to rasterize. The sun has a warm corona
+ *  and a gentle ray burst; both cast light onto the glass via #cglow + #litsheen. */
 function celestialBody(cel: Celestial, W: number, H: number): string {
-  const r = Math.min(W, H) * 0.05;
+  const r = Math.min(W, H) * 0.045;
   const cx = cel.x.toFixed(1);
   const cy = cel.y.toFixed(1);
   if (cel.isDay) {
     return (
-      `<circle cx="${cx}" cy="${cy}" r="${(r * 2.4).toFixed(1)}" fill="url(#sun)"/>` +
-      `<circle cx="${cx}" cy="${cy}" r="${(r * 0.85).toFixed(1)}" fill="#fff3c4"/>` +
-      `<circle cx="${cx}" cy="${cy}" r="${(r * 0.5).toFixed(1)}" fill="#fffbe9"/>`
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 3.4).toFixed(1)}" fill="url(#suncorona)"/>` +
+      sunburst(cel.x, cel.y, r) +
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 1.05).toFixed(1)}" fill="url(#sun)"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 0.62).toFixed(1)}" fill="#fffdf4"/>`
     );
   }
   return (
-    `<circle cx="${cx}" cy="${cy}" r="${(r * 1.9).toFixed(1)}" fill="url(#moonglow)"/>` +
-    `<circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="url(#moon)"/>`
+    `<circle cx="${cx}" cy="${cy}" r="${(r * 2.6).toFixed(1)}" fill="url(#moonglow)"/>` +
+    `<circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="url(#moon)"/>` +
+    // a couple of faint craters for a less "fake" moon
+    `<circle cx="${(cel.x - r * 0.3).toFixed(1)}" cy="${(cel.y - r * 0.25).toFixed(1)}" r="${(r * 0.16).toFixed(1)}" fill="rgba(120,135,165,0.25)"/>` +
+    `<circle cx="${(cel.x + r * 0.28).toFixed(1)}" cy="${(cel.y + r * 0.18).toFixed(1)}" r="${(r * 0.12).toFixed(1)}" fill="rgba(120,135,165,0.2)"/>` +
+    `<circle cx="${(cel.x + r * 0.05).toFixed(1)}" cy="${(cel.y + r * 0.4).toFixed(1)}" r="${(r * 0.09).toFixed(1)}" fill="rgba(120,135,165,0.18)"/>`
   );
+}
+
+/** Soft light shafts spilling from the sun/moon across the scene, so the light
+ *  visibly falls over the glass panels. Very low opacity; no blur. */
+function lightBeams(cel: Celestial, W: number, H: number): string {
+  const color = cel.isDay ? '#ffe9b0' : '#c9d6f0';
+  const baseA = cel.isDay ? 0.06 : 0.035;
+  const out: string[] = [`<g opacity="1">`];
+  // three broad beams fanning toward the lower part of the screen
+  const spread = [-0.22, 0.0, 0.26];
+  for (let i = 0; i < spread.length; i++) {
+    const ang = Math.PI / 2 + spread[i]; // mostly downward
+    const len = H * 1.2;
+    const tipx = cel.x + Math.cos(ang) * len;
+    const tipy = cel.y + Math.sin(ang) * len;
+    const halfBase = Math.min(W, H) * (0.05 + i * 0.01);
+    const px = Math.cos(ang + Math.PI / 2) * halfBase;
+    const py = Math.sin(ang + Math.PI / 2) * halfBase;
+    const wideEnd = Math.min(W, H) * 0.16;
+    const wx = Math.cos(ang + Math.PI / 2) * wideEnd;
+    const wy = Math.sin(ang + Math.PI / 2) * wideEnd;
+    out.push(
+      `<path d="M${(cel.x + px).toFixed(1)} ${(cel.y + py).toFixed(1)} L${(tipx + wx).toFixed(1)} ${(tipy + wy).toFixed(1)} L${(tipx - wx).toFixed(1)} ${(tipy - wy).toFixed(1)} L${(cel.x - px).toFixed(1)} ${(cel.y - py).toFixed(1)} Z" fill="${hexToRgba(color, baseA)}"/>`,
+    );
+  }
+  out.push(`</g>`);
+  return out.join('');
 }
 
 /** Prayer card — a tall stacked tile, or a wide row when much wider than tall. */
@@ -375,7 +527,7 @@ function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palet
     const timeSize = clamp(h * 0.42, 18, 46);
     const iqSize = clamp(h * 0.22, 10, 22);
     const rightX = x + w - pad;
-    out.push(text(x + pad, y + h * 0.6, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', letter: 0.5 }));
+    out.push(text(x + pad, y + h * 0.6, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', letter: 0.5, editId: `label.${r.label}` }));
     if (r.iqamah != null) {
       out.push(text(rightX, y + h * 0.46, fmtShort(r.adhan, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
       out.push(text(rightX, y + h * 0.82, `${L.iqamah} ${fmtShort(r.iqamah, timeFormat)}`, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'end' }));
@@ -395,7 +547,7 @@ function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palet
   const nameSize = fitW(name, w * 0.9, clamp(Math.min(w * 0.16, h * 0.2), 12, 30), 11);
   const timeSize = fitW(timeStr, w * 0.92, clamp(Math.min(w * 0.3, h * 0.42), 20, 64), 15);
   const iqSize = iqStr ? fitW(iqStr, w * 0.94, clamp(Math.min(w * 0.15, h * 0.16), 10, 24), 9) : 0;
-  out.push(text(center, y + h * 0.24 + nameSize * 0.4, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5 }));
+  out.push(text(center, y + h * 0.24 + nameSize * 0.4, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5, editId: `label.${r.label}` }));
   out.push(text(center, y + h * (r.iqamah != null ? 0.58 : 0.64), timeStr, { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
   if (iqStr) {
     out.push(text(center, y + h * 0.87, iqStr, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
@@ -413,18 +565,28 @@ function prayerGrid(rows: Row[], x: number, y: number, w: number, h: number, col
     .join('');
 }
 
-/** Clock (+ optional countdown pill) centred at (cx, cy). */
+/** Clock (+ optional countdown pill) centred at (cx, cy). The AM/PM marker is
+ *  placed just past the measured end of the time so it never overlaps the digits
+ *  (which matters once seconds are shown and the time string is longer). */
 function clockGroup(cx: number, cy: number, size: number, clock: ClockText, showCountdown: boolean, pill: string, p: Palette): string {
   const out: string[] = [];
-  const periodGap = clock.period ? size * 0.5 : 0;
-  out.push(text(cx - periodGap * 0.5, cy + size * 0.34, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: -1 }));
-  if (clock.period) out.push(text(cx - periodGap * 0.5 + size * 1.02, cy + size * 0.34, clock.period, { size: size * 0.26, fill: p.textDim, weight: 600, anchor: 'start' }));
+  const baseline = cy + size * 0.34;
+  const letter = -size * 0.02;
+  const timeW = approxWidth(clock.time, size) + letter * (clock.time.length - 1);
+  const periodSize = size * 0.3;
+  const periodPad = size * 0.16;
+  const periodW = clock.period ? periodPad + approxWidth(clock.period, periodSize) : 0;
+  const startX = cx - (timeW + periodW) / 2;
+  out.push(text(startX, baseline, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'start', letter }));
+  if (clock.period) {
+    out.push(text(startX + timeW + periodPad, baseline, clock.period, { size: periodSize, fill: p.textDim, weight: 700, anchor: 'start' }));
+  }
   if (showCountdown && pill) {
     const ps = clamp(size * 0.16, 13, 30);
-    const pw = pill.length * ps * 0.6 + ps * 2.2;
+    const pw = approxWidth(pill, ps) + ps * 2.4;
     const ph = ps * 2.2;
     out.push(glass(cx - pw / 2, cy + size * 0.5, pw, ph, ph / 2, { fill: GLASS_RAISED }));
-    out.push(text(cx, cy + size * 0.5 + ph * 0.64, pill, { size: ps, fill: p.text, anchor: 'middle', letter: 0.5 }));
+    out.push(text(cx, cy + size * 0.5 + ph * 0.64, pill, { size: ps, fill: p.text, anchor: 'middle', letter: 0.3 }));
   }
   return out.join('');
 }
@@ -462,6 +624,7 @@ function splitView(
   W: number,
   H: number,
   P: number,
+  logo: string | null,
 ): string {
   const out: string[] = [];
   const gap = Math.min(W, H) * 0.014;
@@ -477,11 +640,11 @@ function splitView(
   let cy = top + pad;
   if (tt.showLogo) {
     const ms = leftW * 0.13;
-    out.push(mark(leftX + pad, cy, ms, p.primary));
-    out.push(text(leftX + pad + ms + leftW * 0.04, cy + ms * 0.78, tt.masjidName, { size: clamp(leftW * 0.075, 14, 30), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
+    out.push(mark(leftX + pad, cy, ms, p.primary, logo));
+    out.push(text(leftX + pad + ms + leftW * 0.04, cy + ms * 0.78, tt.masjidName, { size: clamp(leftW * 0.075, 14, 30), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start', editId: 'masjidName' }));
     cy += ms + pad * 0.7;
   } else {
-    out.push(text(leftX + pad, cy + leftW * 0.08, tt.masjidName, { size: clamp(leftW * 0.085, 14, 32), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
+    out.push(text(leftX + pad, cy + leftW * 0.08, tt.masjidName, { size: clamp(leftW * 0.085, 14, 32), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start', editId: 'masjidName' }));
     cy += leftW * 0.13;
   }
   const clockSize = clamp(leftW * 0.2, 34, 96);
@@ -508,7 +671,7 @@ function splitView(
     const nameColor = r.active ? p.primarySoft : r.next ? p.goldSoft : p.text;
     const nameSize = clamp(rowH * 0.34, 12, 30);
     const timeSize = clamp(rowH * 0.34, 12, 30);
-    out.push(text(leftX + pad, midY, L[r.label] ?? r.label, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start' }));
+    out.push(text(leftX + pad, midY, L[r.label] ?? r.label, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', editId: `label.${r.label}` }));
     out.push(text(colAdhan, midY, fmtShort(r.adhan, tt.timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
     out.push(text(colIq, midY, r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : '—', { size: timeSize, fill: r.iqamah != null ? p.goldSoft : p.textFaint, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
   });
@@ -537,14 +700,41 @@ function setupNeeded(p: Palette, W: number, H: number, masjidName: string): stri
 export interface RenderOpts {
   /** data: URI of a custom background image, or null for the themed scene */
   bg?: string | null;
+  /** data: URI of an uploaded masjid logo, or null for the built-in mark */
+  logo?: string | null;
+  /** when present, click-to-edit text regions are collected here (no extra cost
+   *  for the video pipeline, which never passes a sink) */
+  sink?: { hotspots: Hotspot[] };
 }
 
 const CAROUSEL: TimetableLayout[] = ['centered', 'clockTop', 'split'];
 
 export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}): string {
+  const prevHot = HOT;
+  HOT = opts.sink ? [] : null;
+  try {
+    return build(tt, now, opts);
+  } finally {
+    if (opts.sink && HOT) {
+      const { width: W, height: H } = dimsFor(tt.orientation, tt.quality);
+      opts.sink.hotspots = HOT.map((h) => ({
+        id: h.id,
+        value: h.value,
+        xPct: (h.x / W) * 100,
+        yPct: (h.y / H) * 100,
+        wPct: (h.w / W) * 100,
+        hPct: (h.h / H) * 100,
+      }));
+    }
+    HOT = prevHot;
+  }
+}
+
+function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const { width: W, height: H } = dimsFor(tt.orientation, tt.quality);
   const p = getPalette(tt.themeId, tt.accent);
-  const L = labels(tt.language);
+  const L = labels(tt.language, tt.labels);
+  const logo = opts.logo ?? null;
 
   if (tt.latitude == null || tt.longitude == null) {
     return setupNeeded(p, W, H, tt.masjidName || 'Our Masjid');
@@ -552,13 +742,13 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
 
   const m = buildModel(tt, now);
   const nowHours = m.parts.hour + m.parts.minute / 60 + m.parts.second / 3600;
-  const clock = fmtClock(nowHours, tt.timeFormat);
+  const clock = fmtClock(nowHours, tt.timeFormat, tt.showSeconds);
 
   const remMin = (m.nextHours - nowHours) * 60;
   const hms: [number, number, number] = [Math.floor(remMin / 60), Math.floor(remMin % 60), Math.floor((remMin * 60) % 60)];
   const countdown = hms[0] > 0 ? `${hms[0]}h ${pad2(hms[1])}m` : `${hms[1]}m ${pad2(hms[2])}s`;
   const nextLabel = L[m.rows.find((r) => r.next)?.label ?? 'fajr'] ?? '';
-  const pillText = `${L.next.toUpperCase()}   ${nextLabel}  ·  ${countdown}`;
+  const pillText = `${L.next.toUpperCase()} · ${nextLabel} · ${countdown}`;
 
   const greg = gregorian(m.parts, tt.language, tt.timezone);
   const hij = hijri(m.parts, tt.language);
@@ -582,18 +772,19 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
   }
   out.push(rect(0, 0, W, H, 0, 'url(#cglow)')); // light from the sun/moon
   out.push(celestialBody(cel, W, H)); // the sun or moon itself
+  out.push(lightBeams(cel, W, H)); // soft shafts falling over the scene
   out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
 
   if (layout === 'split') {
-    out.push(splitView(tt, m, clock, hms, greg, hij, p, L, W, H, P));
+    out.push(splitView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo));
   } else {
     // ── Masthead ──
     const mastH = H * (portrait ? 0.11 : 0.15);
     const mastY = P;
     const markSize = mastH * 0.62;
     if (portrait) {
-      if (tt.showLogo) out.push(mark(W / 2 - markSize / 2, mastY, markSize, p.primary));
-      out.push(text(W / 2, mastY + mastH * 0.9, tt.masjidName, { size: clamp(W * 0.06, 26, 72), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+      if (tt.showLogo) out.push(mark(W / 2 - markSize / 2, mastY, markSize, p.primary, logo));
+      out.push(text(W / 2, mastY + mastH * 0.9, tt.masjidName, { size: clamp(W * 0.06, 26, 72), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle', editId: 'masjidName' }));
       if (tt.showDates) {
         if (hij) out.push(text(W / 2, mastY + mastH * 1.2, hij, { size: clamp(W * 0.03, 14, 30), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'middle' }));
         out.push(text(W / 2, mastY + mastH * 1.42, greg, { size: clamp(W * 0.022, 12, 22), fill: p.textDim, anchor: 'middle' }));
@@ -601,10 +792,10 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
     } else {
       let nameX = P;
       if (tt.showLogo) {
-        out.push(mark(P, mastY + (mastH - markSize) / 2, markSize, p.primary));
+        out.push(mark(P, mastY + (mastH - markSize) / 2, markSize, p.primary, logo));
         nameX = P + markSize + W * 0.012;
       }
-      out.push(text(nameX, mastY + mastH * 0.62, tt.masjidName, { size: clamp(mastH * 0.46, 24, 64), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start' }));
+      out.push(text(nameX, mastY + mastH * 0.62, tt.masjidName, { size: clamp(mastH * 0.46, 24, 64), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start', editId: 'masjidName' }));
       if (tt.showDates) {
         if (hij) out.push(text(W - P, mastY + mastH * 0.42, hij, { size: clamp(mastH * 0.28, 16, 34), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
         out.push(text(W - P, mastY + mastH * 0.74, greg, { size: clamp(mastH * 0.2, 13, 24), fill: p.textDim, anchor: 'end' }));
@@ -634,7 +825,7 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
 
   // ── Footer ─────────────────────────────────────────────────────────────────
   const methodNote = `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
-  out.push(text(W / 2, H - P * 0.5, tt.footerNote || methodNote, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5 }));
+  out.push(text(W / 2, H - P * 0.5, tt.footerNote || methodNote, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5, editId: 'footerNote' }));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }

@@ -32,6 +32,11 @@ export interface IqamahConfig {
   isha: IqamahRule;
 }
 
+/** Per-day Iqamah override times uploaded via CSV, keyed by "MM-DD" (repeats each
+ *  year). Each value maps a prayer key to a "HH:MM" clock time. Where a date has an
+ *  entry it wins over the IqamahConfig rule; missing dates fall back to the rule. */
+export type IqamahYear = Record<string, Partial<Record<'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha' | 'jumuah', string>>>;
+
 /** A full-screen prayer-times display, themeable per room. */
 export interface Timetable {
   id: string;
@@ -56,6 +61,8 @@ export interface Timetable {
   timeFormat: TimeFormat;
   language: Lang;
   iqamah: IqamahConfig;
+  /** Per-day Iqamah overrides (CSV import); managed only by the iqamah-csv endpoints. */
+  iqamahYear?: IqamahYear;
   /** Friday khutbah/Jumu'ah times "HH:MM" (one or more) */
   jumuah: string[];
   showSunrise: boolean;
@@ -63,8 +70,14 @@ export interface Timetable {
   showCountdown: boolean;
   showDates: boolean;
   showLogo: boolean;
+  /** show seconds on the big clock (HH:MM:SS) */
+  showSeconds: boolean;
   /** filename of an uploaded custom background under /data/uploads ('' = themed scene) */
   backgroundImage: string;
+  /** filename of an uploaded masjid logo under /data/uploads ('' = the built-in mark) */
+  logoImage: string;
+  /** custom on-screen label overrides (e.g. rename a prayer), keyed by label key */
+  labels?: Record<string, string>;
   footerNote: string;
   createdAt: string;
 }

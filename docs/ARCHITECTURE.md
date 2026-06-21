@@ -70,6 +70,20 @@ Per active timetable, one pipeline runs:
 Because the frame is mostly static, encoding is cheap (duplicated frames cost almost nothing), which is what
 keeps it viable on a Raspberry Pi. Pipelines self-heal: if ffmpeg exits, it is respawned with backoff.
 
+Per-timetable touches the renderer honours: an optional uploaded **masjid logo** (`render/background.ts`,
+inlined like the background), an optional **seconds** clock, a live **sun/moon with rays** that lights the
+glass panels, **custom label overrides** (rename a prayer/masjid/footer), and a per-day **Iqamah CSV** for the
+whole year (`iqamahCsv.ts`, keyed by `MM-DD`, overriding the rules on matching dates).
+
+## Click-to-edit live editor
+
+The studio preview is a server-rendered PNG. To let the user rename text by clicking it, a render can also
+collect **hotspots**: when `renderDisplaySvg` is given a `sink`, each editable `text()` records its label id
+and bounding box as fractions of the canvas (`POST /api/preview-meta` → `renderPool.meta`, which builds the
+SVG only — no rasterization). The editor overlays a transparent button per hotspot and an inline `<input>`
+on click; committing writes `masjidName` / `footerNote` / `labels[<key>]` back to the form. Hotspot collection
+costs the video pipeline nothing (it never passes a sink).
+
 ## Reconcile loop
 
 `store.update()` (any data change) and a 15-second timer both trigger `orchestrator.reconcile()`, which:

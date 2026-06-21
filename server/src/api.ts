@@ -17,8 +17,9 @@ import {
 } from './auth';
 import { platformUser, ssoConfigured } from './omos';
 import { THEMES } from './render/theme';
-import { saveBackground, removeBackground, isAllowedImageMime } from './render/background';
-import { renderPreviewPng } from './render/renderPool';
+import { saveBackground, removeBackground, saveLogo, removeLogo, isAllowedImageMime } from './render/background';
+import { renderPreviewPng, renderPreviewMeta } from './render/renderPool';
+import { parseIqamahCsv, toCsv, templateCsv } from './iqamahCsv';
 import {
   normTimetable,
   normSource,
@@ -237,6 +238,7 @@ export function createApi(deps: Deps) {
         }
         if (method === 'DELETE') {
           removeBackground(id);
+          removeLogo(id);
           store.update((db) => void (db.timetables = db.timetables.filter((t) => t.id !== id)));
           return sendJson(res, 200, { ok: true });
         }
@@ -270,6 +272,74 @@ export function createApi(deps: Deps) {
         if (method === 'DELETE') {
           removeBackground(id);
           store.update((db) => void (db.timetables[idx].backgroundImage = ''));
+          return sendJson(res, 200, store.db.timetables[idx]);
+        }
+      }
+
+      // ---- Timetable masjid logo ------------------------------------------
+      const logoMatch = /^\/api\/timetables\/([\w-]+)\/logo$/.exec(pathname);
+      if (logoMatch) {
+        const id = logoMatch[1];
+        const idx = store.db.timetables.findIndex((t) => t.id === id);
+        if (idx < 0) return sendJson(res, 404, { error: 'Timetable not found.' });
+        if (method === 'POST') {
+          const body = await readBody(req, 4_000_000);
+          const m = /^data:([^;,]+);base64,(.+)$/s.exec(String(body.data ?? ''));
+          if (!m || !isAllowedImageMime(m[1])) {
+            return sendJson(res, 400, { error: 'Please choose a PNG, JPG, WebP, GIF or SVG image.' });
+          }
+          let buf: Buffer;
+          try {
+            buf = Buffer.from(m[2], 'base64');
+          } catch {
+            return sendJson(res, 400, { error: 'That image could not be read.' });
+          }
+          if (buf.length > 2_500_000) {
+            return sendJson(res, 400, { error: 'That logo is too large — please keep it under about 2 MB.' });
+          }
+          const file = saveLogo(id, m[1], buf);
+          store.update((db) => void (db.timetables[idx].logoImage = file));
+          return sendJson(res, 200, store.db.timetables[idx]);
+        }
+        if (method === 'DELETE') {
+          removeLogo(id);
+          store.update((db) => void (db.timetables[idx].logoImage = ''));
+          return sendJson(res, 200, store.db.timetables[idx]);
+        }
+      }
+
+      // ---- Timetable yearly Iqamah CSV (import / export / template / clear) ----
+      const csvMatch = /^\/api\/timetables\/([\w-]+)\/iqamah-csv$/.exec(pathname);
+      if (csvMatch) {
+        const id = csvMatch[1];
+        const idx = store.db.timetables.findIndex((t) => t.id === id);
+        if (idx < 0) return sendJson(res, 404, { error: 'Timetable not found.' });
+        if (method === 'POST') {
+          const body = await readBody(req, 2_000_000);
+          const parsed = parseIqamahCsv(String(body.data ?? ''));
+          if (parsed.rows === 0) {
+            return sendJson(res, 400, {
+              error: parsed.errors[0] ?? 'No usable rows found. Each row needs a date and at least one time.',
+            });
+          }
+          store.update((db) => void (db.timetables[idx].iqamahYear = parsed.data));
+          return sendJson(res, 200, { ok: true, rows: parsed.rows, errors: parsed.errors.slice(0, 5) });
+        }
+        if (method === 'GET') {
+          const mode = url.searchParams.get('mode');
+          const tt = store.db.timetables[idx];
+          const csv = mode === 'template' ? templateCsv(tt) : toCsv(tt.iqamahYear);
+          const fname = mode === 'template' ? 'iqamah-template.csv' : 'iqamah-times.csv';
+          res.writeHead(200, {
+            'content-type': 'text/csv; charset=utf-8',
+            'content-disposition': `attachment; filename="${fname}"`,
+            'cache-control': 'no-store',
+          });
+          res.end(csv);
+          return;
+        }
+        if (method === 'DELETE') {
+          store.update((db) => void delete db.timetables[idx].iqamahYear);
           return sendJson(res, 200, store.db.timetables[idx]);
         }
       }
@@ -372,19 +442,29 @@ export function createApi(deps: Deps) {
       if (pathname === '/api/preview' && method === 'POST') {
         const body = await readBody(req);
         const tt = normTimetable(body);
+        // Background + logo are stripped by the validator, so take them from the raw
+        // body — an unsaved upload should still appear in the live preview.
         const bgFile = typeof body.backgroundImage === 'string' ? body.backgroundImage : '';
+        const logoFile = typeof body.logoImage === 'string' ? body.logoImage : '';
         const width = tt.orientation === 'portrait' ? 540 : 960;
-        const png = await renderPreviewPng(tt, Date.now(), width, bgFile);
+        const png = await renderPreviewPng(tt, Date.now(), width, bgFile, logoFile);
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
         res.end(png);
         return;
+      }
+      // Click-to-edit regions for the live editor (fractional coordinates).
+      if (pathname === '/api/preview-meta' && method === 'POST') {
+        const body = await readBody(req);
+        const tt = normTimetable(body);
+        const hotspots = await renderPreviewMeta(tt, Date.now());
+        return sendJson(res, 200, { hotspots });
       }
       const prevMatch = /^\/api\/preview\/([\w-]+)$/.exec(pathname);
       if (prevMatch && method === 'GET') {
         const tt = store.db.timetables.find((t) => t.id === prevMatch[1]);
         if (!tt) return sendJson(res, 404, { error: 'Timetable not found.' });
         const width = tt.orientation === 'portrait' ? 540 : 960;
-        const png = await renderPreviewPng(tt, Date.now(), width, tt.backgroundImage || '');
+        const png = await renderPreviewPng(tt, Date.now(), width, tt.backgroundImage || '', tt.logoImage || '');
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
         res.end(png);
         return;

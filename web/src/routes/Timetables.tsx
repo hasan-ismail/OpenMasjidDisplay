@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig } from '../types';
+import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot } from '../types';
 import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconClock, useToast } from '../ui';
 
 interface Props {
@@ -116,8 +116,8 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     method: 'MWL', asrMadhab: 'Standard', timezone: state.settings.scheduleTimezone ?? '',
     timeFormat: '12h', language: 'en',
     iqamah: { fajr: { mode: 'offset', offset: 20 }, dhuhr: { mode: 'offset', offset: 10 }, asr: { mode: 'offset', offset: 10 }, maghrib: { mode: 'offset', offset: 5 }, isha: { mode: 'offset', offset: 10 } },
-    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true,
-    backgroundImage: '', footerNote: '', createdAt: '',
+    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false,
+    backgroundImage: '', logoImage: '', footerNote: '', createdAt: '',
   };
 }
 
@@ -178,6 +178,76 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
     }
   };
 
+  const pickLogo = (file: File) => {
+    if (!tt) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const updated = await api.uploadLogo(tt.id, String(reader.result));
+        set('logoImage', updated.logoImage);
+        toast('Logo updated.');
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not upload the logo.', 'error');
+      }
+    };
+    reader.onerror = () => toast('Could not read that image.', 'error');
+    reader.readAsDataURL(file);
+  };
+  const clearLogo = async () => {
+    if (!tt) return;
+    try {
+      await api.removeLogo(tt.id);
+      set('logoImage', '');
+      toast('Logo removed.');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not remove the logo.', 'error');
+    }
+  };
+
+  // Click-to-edit in the live preview: rename a prayer, the masjid name or footer.
+  const editLabel = (id: string, value: string) => {
+    if (id === 'masjidName') set('masjidName', value || 'Our Masjid');
+    else if (id === 'footerNote') set('footerNote', value);
+    else if (id.startsWith('label.')) {
+      const key = id.slice(6);
+      setF((p) => {
+        const labels = { ...(p.labels ?? {}) };
+        const v = value.trim();
+        if (v) labels[key] = v;
+        else delete labels[key];
+        return { ...p, labels: Object.keys(labels).length ? labels : undefined };
+      });
+    }
+  };
+
+  const [csvRows, setCsvRows] = useState<number | null>(tt?.iqamahYear ? Object.keys(tt.iqamahYear).length : null);
+  const importCsv = (file: File) => {
+    if (!tt) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const r = await api.importIqamahCsv(tt.id, String(reader.result));
+        setCsvRows(r.rows);
+        toast(`Imported Iqamah times for ${r.rows} day${r.rows === 1 ? '' : 's'}.`);
+        if (r.errors.length) toast(`${r.errors.length} line(s) were skipped.`, 'error');
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not read that CSV.', 'error');
+      }
+    };
+    reader.onerror = () => toast('Could not read that file.', 'error');
+    reader.readAsText(file);
+  };
+  const clearCsv = async () => {
+    if (!tt) return;
+    try {
+      await api.clearIqamahCsv(tt.id);
+      setCsvRows(null);
+      toast('Reverted to your Iqamah rules.');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not clear the CSV.', 'error');
+    }
+  };
+
   return (
     <Modal
       open
@@ -194,9 +264,9 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
     >
       <div className="studio">
         <div className="studio__preview">
-          <LivePreview body={formBody(f)} portrait={f.orientation === 'portrait'} />
+          <LivePreview body={formBody(f)} portrait={f.orientation === 'portrait'} onEditCommit={editLabel} />
           <p className="hint" style={{ textAlign: 'center', marginBlockStart: '0.5rem' }}>
-            <IconClock size={12} /> Live preview — exactly what your screens show.
+            <IconClock size={12} /> Live preview — click a name, the masjid title or the footer to rename it.
           </p>
         </div>
 
@@ -307,11 +377,27 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
             )}
           </Field>
 
+          <Field label="Masjid logo" hint="Replaces the built-in dome mark. A transparent PNG or SVG looks best.">
+            {tt ? (
+              <div className="row" style={{ gap: '0.6rem', flexWrap: 'wrap' }}>
+                <span className="muted" style={{ fontSize: '0.88rem' }}>{f.logoImage ? 'Custom logo set.' : 'Using the built-in mark.'}</span>
+                <label className="btn btn--ghost btn--sm" style={{ cursor: 'pointer' }}>
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) pickLogo(file); e.target.value = ''; }} />
+                  {f.logoImage ? 'Replace logo' : 'Upload logo'}
+                </label>
+                {f.logoImage && <button type="button" className="btn btn--ghost btn--sm" onClick={clearLogo}>Remove</button>}
+              </div>
+            ) : (
+              <span className="hint">Create the timetable first, then you can add a logo.</span>
+            )}
+          </Field>
+
           <h3 className="section-title">Show on screen</h3>
           <div className="toggle-list">
             <ToggleRow label="Logo & masjid name" checked={f.showLogo} onChange={(v) => set('showLogo', v)} />
             <ToggleRow label="Hijri & Gregorian dates" checked={f.showDates} onChange={(v) => set('showDates', v)} />
             <ToggleRow label="Countdown to next prayer" checked={f.showCountdown} onChange={(v) => set('showCountdown', v)} />
+            <ToggleRow label="Seconds on the clock" checked={f.showSeconds} onChange={(v) => set('showSeconds', v)} />
             <ToggleRow label="Sunrise" checked={f.showSunrise} onChange={(v) => set('showSunrise', v)} />
           </div>
 
@@ -335,15 +421,45 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
 
           <h3 className="section-title">Jumu'ah times (Fridays)</h3>
           <JumuahEditor times={f.jumuah} onChange={(j) => set('jumuah', j)} />
+
+          <h3 className="section-title">Iqamah times for the whole year (CSV)</h3>
+          {tt ? (
+            <div>
+              <p className="hint" style={{ marginBlockStart: 0 }}>
+                Upload one file with a row per day to set exact Iqamah times for the whole year — they override
+                the rules above on matching dates. Download the example to see the format (it comes pre-filled
+                from your rules, ready to tweak).
+              </p>
+              <div className="row" style={{ gap: '0.5rem', flexWrap: 'wrap', marginBlockStart: '0.6rem' }}>
+                <label className="btn btn--primary btn--sm" style={{ cursor: 'pointer' }}>
+                  <input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) importCsv(file); e.target.value = ''; }} />
+                  Import CSV
+                </label>
+                <a className="btn btn--ghost btn--sm" href={api.iqamahCsvUrl(tt.id, 'template')}>Download example</a>
+                <a className="btn btn--ghost btn--sm" href={api.iqamahCsvUrl(tt.id)}>Export current</a>
+                {csvRows != null && <button type="button" className="btn btn--ghost btn--sm" onClick={clearCsv}>Clear ({csvRows} days)</button>}
+              </div>
+              {csvRows != null && (
+                <p className="hint" style={{ marginBlockStart: '0.5rem' }}>
+                  {csvRows} day{csvRows === 1 ? '' : 's'} set from CSV. These show on the screens; the live preview
+                  here still uses your rules.
+                </p>
+              )}
+            </div>
+          ) : (
+            <span className="hint">Create the timetable first, then you can upload a yearly CSV.</span>
+          )}
         </div>
       </div>
     </Modal>
   );
 }
 
-function LivePreview({ body, portrait }: { body: Partial<Timetable>; portrait: boolean }) {
+function LivePreview({ body, portrait, onEditCommit }: { body: Partial<Timetable>; portrait: boolean; onEditCommit: (id: string, value: string) => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [err, setErr] = useState(false);
+  const [spots, setSpots] = useState<Hotspot[]>([]);
+  const [active, setActive] = useState<{ id: string; value: string } | null>(null);
   const urlRef = useRef<string | null>(null);
   const key = JSON.stringify(body);
 
@@ -365,6 +481,10 @@ function LivePreview({ body, portrait }: { body: Partial<Timetable>; portrait: b
         .catch(() => {
           if (alive) setErr(true);
         });
+      api
+        .previewMeta(body)
+        .then((r) => { if (alive) setSpots(r.hotspots); })
+        .catch(() => { if (alive) setSpots([]); });
     }, 350);
     return () => {
       alive = false;
@@ -375,11 +495,44 @@ function LivePreview({ body, portrait }: { body: Partial<Timetable>; portrait: b
 
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current); }, []);
 
+  const commit = () => {
+    if (active) onEditCommit(active.id, active.value);
+    setActive(null);
+  };
+  const activeSpot = active ? spots.find((s) => s.id === active.id) : null;
+
   return (
     <div className={`studio-canvas${portrait ? ' studio-canvas--portrait' : ''}`}>
       {url && <img src={url} alt="Live preview of the timetable" className="studio-canvas__img" />}
       {!url && !err && <div className="studio-canvas__overlay"><Spinner /></div>}
       {err && <div className="studio-canvas__overlay"><span className="muted">Preview unavailable.</span></div>}
+      {url &&
+        spots.map((s) =>
+          active && active.id === s.id ? null : (
+            <button
+              key={s.id}
+              type="button"
+              className="hot"
+              title="Click to rename"
+              style={{ left: `${s.xPct}%`, top: `${s.yPct}%`, width: `${s.wPct}%`, height: `${s.hPct}%` }}
+              onClick={() => setActive({ id: s.id, value: s.value })}
+            />
+          ),
+        )}
+      {active && activeSpot && (
+        <input
+          autoFocus
+          className="hot-input"
+          style={{ left: `${activeSpot.xPct}%`, top: `${activeSpot.yPct}%`, width: `${Math.max(activeSpot.wPct, 14)}%`, height: `${activeSpot.hPct}%` }}
+          value={active.value}
+          onChange={(e) => setActive({ id: active.id, value: e.target.value })}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); setActive(null); }
+          }}
+        />
+      )}
     </div>
   );
 }

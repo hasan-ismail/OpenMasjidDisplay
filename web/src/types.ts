@@ -20,6 +20,7 @@ export interface IqamahConfig {
   maghrib: IqamahRule;
   isha: IqamahRule;
 }
+export type IqamahYear = Record<string, Partial<Record<'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha' | 'jumuah', string>>>;
 export interface Timetable {
   id: string;
   name: string;
@@ -38,12 +39,16 @@ export interface Timetable {
   timeFormat: TimeFormat;
   language: Lang;
   iqamah: IqamahConfig;
+  iqamahYear?: IqamahYear;
   jumuah: string[];
   showSunrise: boolean;
   showCountdown: boolean;
   showDates: boolean;
   showLogo: boolean;
+  showSeconds: boolean;
   backgroundImage: string;
+  logoImage: string;
+  labels?: Record<string, string>;
   footerNote: string;
   createdAt: string;
 }
@@ -105,6 +110,16 @@ export interface ThemePreset {
   id: string;
   label: string;
   palette: Record<string, string>;
+}
+
+/** A click-to-edit text region on the live preview (fractions of the canvas). */
+export interface Hotspot {
+  id: string;
+  value: string;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
 }
 
 export interface AppState {

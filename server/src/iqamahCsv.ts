@@ -1,0 +1,162 @@
+/**
+ * iqamahCsv.ts — import / export of a whole year of Iqamah times as CSV.
+ *
+ * A masjid can upload one file with a row per day (keyed by month-day, so it
+ * repeats every year) and exact Iqamah clock times per prayer. Those override the
+ * per-prayer rules for matching dates; other days fall back to the rules.
+ *
+ * Accepted columns (header, case-insensitive): date, fajr, dhuhr, asr, maghrib,
+ * isha, jumuah. The date may be YYYY-MM-DD, MM-DD or M/D; times may be 24h "HH:MM"
+ * or 12h "h:MM am/pm". Everything is normalised to "MM-DD" keys and "HH:MM" 24h.
+ */
+import type { IqamahYear, Timetable } from './types';
+import { prayerTimes, iqamahHours, timezoneOffsetHours, localParts } from './prayer/engine';
+
+const PRAYERS = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha', 'jumuah'] as const;
+type PrayerCol = (typeof PRAYERS)[number];
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Parse a clock string ("HH:MM", "h:MM am/pm") to "HH:MM" 24h, or null. */
+function parseClock(s: string): string | null {
+  const m = /^\s*(\d{1,2}):(\d{2})\s*(am|pm)?\s*$/i.exec(s);
+  if (!m) return null;
+  let h = +m[1];
+  const min = +m[2];
+  if (min > 59) return null;
+  const ap = m[3]?.toLowerCase();
+  if (ap) {
+    if (h < 1 || h > 12) return null;
+    if (ap === 'pm' && h !== 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+  }
+  if (h > 23) return null;
+  return `${pad2(h)}:${pad2(min)}`;
+}
+
+/** Parse a date cell to "MM-DD", or null. */
+function parseMonthDay(s: string): string | null {
+  const t = s.trim();
+  let mo: number, da: number;
+  let m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(t); // YYYY-MM-DD
+  if (m) {
+    mo = +m[2];
+    da = +m[3];
+  } else if ((m = /^(\d{1,2})[-/](\d{1,2})$/.exec(t))) {
+    // MM-DD or M/D
+    mo = +m[1];
+    da = +m[2];
+  } else {
+    return null;
+  }
+  if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+  return `${pad2(mo)}-${pad2(da)}`;
+}
+
+function splitLine(line: string): string[] {
+  // Minimal CSV: commas, optional surrounding double-quotes.
+  return line.split(',').map((c) => c.trim().replace(/^"(.*)"$/, '$1').trim());
+}
+
+export interface ParsedCsv {
+  data: IqamahYear;
+  rows: number;
+  errors: string[];
+}
+
+export function parseIqamahCsv(text: string): ParsedCsv {
+  const lines = String(text)
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const errors: string[] = [];
+  const data: IqamahYear = {};
+  if (lines.length === 0) return { data, rows: 0, errors: ['The file was empty.'] };
+
+  // Header → column index map.
+  const header = splitLine(lines[0]).map((h) => h.toLowerCase());
+  const dateCol = header.findIndex((h) => h === 'date' || h === 'day' || h === 'month-day');
+  if (dateCol < 0) {
+    return { data, rows: 0, errors: ['No "date" column found. The first row must be a header like: date,fajr,dhuhr,asr,maghrib,isha'] };
+  }
+  const colOf: Partial<Record<PrayerCol, number>> = {};
+  for (const p of PRAYERS) {
+    const idx = header.indexOf(p);
+    if (idx >= 0) colOf[p] = idx;
+  }
+
+  let rows = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitLine(lines[i]);
+    const key = parseMonthDay(cells[dateCol] ?? '');
+    if (!key) {
+      if (errors.length < 10) errors.push(`Line ${i + 1}: couldn't read the date "${cells[dateCol] ?? ''}".`);
+      continue;
+    }
+    const entry: Partial<Record<PrayerCol, string>> = {};
+    for (const p of PRAYERS) {
+      const idx = colOf[p];
+      if (idx == null) continue;
+      const raw = cells[idx] ?? '';
+      if (!raw) continue;
+      const clk = parseClock(raw);
+      if (clk) entry[p] = clk;
+      else if (errors.length < 10) errors.push(`Line ${i + 1}: couldn't read ${p} time "${raw}".`);
+    }
+    if (Object.keys(entry).length > 0) {
+      data[key] = entry;
+      rows++;
+    }
+  }
+  return { data, rows, errors };
+}
+
+/** Serialise stored overrides back to CSV (sorted by date). */
+export function toCsv(year: IqamahYear | undefined): string {
+  const head = 'date,fajr,dhuhr,asr,maghrib,isha,jumuah';
+  const keys = Object.keys(year ?? {}).sort();
+  const lines = keys.map((k) => {
+    const e = (year as IqamahYear)[k];
+    return [k, e.fajr ?? '', e.dhuhr ?? '', e.asr ?? '', e.maghrib ?? '', e.isha ?? '', e.jumuah ?? ''].join(',');
+  });
+  return [head, ...lines].join('\n') + '\n';
+}
+
+function fmtHHMM(hours: number | null): string {
+  if (hours == null || !Number.isFinite(hours)) return '';
+  let total = Math.round(hours * 60);
+  total = ((total % 1440) + 1440) % 1440;
+  return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
+}
+
+const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]; // leap-year Feb
+
+/** A full-year example/template CSV. When the timetable has a location, every row
+ *  is pre-filled with the Iqamah times its rules currently produce — so it doubles
+ *  as a ready-to-edit starting point the masjid can tweak and re-upload. */
+export function templateCsv(tt: Timetable): string {
+  const head = 'date,fajr,dhuhr,asr,maghrib,isha,jumuah';
+  const lines: string[] = [head];
+  const hasLoc = tt.latitude != null && tt.longitude != null;
+  const tz = tt.timezone || undefined;
+  const YEAR = 2024; // a leap year, so 02-29 exists
+  for (let mo = 1; mo <= 12; mo++) {
+    for (let da = 1; da <= DAYS_IN_MONTH[mo - 1]; da++) {
+      const key = `${pad2(mo)}-${pad2(da)}`;
+      if (!hasLoc) {
+        lines.push(`${key},,,,,,`);
+        continue;
+      }
+      const noon = new Date(Date.UTC(YEAR, mo - 1, da, 12));
+      const off = timezoneOffsetHours(noon, tz);
+      const parts = localParts(noon, tz);
+      const t = prayerTimes(parts, tt.latitude!, tt.longitude!, off, tt.method, tt.asrMadhab);
+      const iq = (k: keyof typeof tt.iqamah, adhan: number) => fmtHHMM(iqamahHours(adhan, tt.iqamah[k]));
+      lines.push(
+        [key, iq('fajr', t.fajr), iq('dhuhr', t.dhuhr), iq('asr', t.asr), iq('maghrib', t.maghrib), iq('isha', t.isha), ''].join(','),
+      );
+    }
+  }
+  return lines.join('\n') + '\n';
+}

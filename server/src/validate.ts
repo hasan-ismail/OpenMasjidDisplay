@@ -74,6 +74,24 @@ function normIqamahRule(v: unknown): IqamahRule {
   return { mode: 'offset', offset: intIn(o.offset, 10, 0, 240) };
 }
 
+/** Sanitise custom label overrides: known-ish keys, short non-empty strings. */
+function normLabels(v: unknown, base?: Record<string, string>): Record<string, string> | undefined {
+  if (v === undefined) return base;
+  const o = asObj(v);
+  const out: Record<string, string> = {};
+  let n = 0;
+  for (const [k, val] of Object.entries(o)) {
+    if (n >= 24) break;
+    if (!/^[a-zA-Z][a-zA-Z0-9_]{0,23}$/.test(k)) continue;
+    const s = String(val ?? '').slice(0, 40).trim();
+    if (s) {
+      out[k] = s;
+      n++;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function normIqamah(v: unknown): IqamahConfig {
   const o = asObj(v);
   const d = defaultIqamah();
@@ -112,13 +130,18 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     timeFormat: oneOf(o.timeFormat, ['12h', '24h'] as const, base?.timeFormat ?? '12h') as TimeFormat,
     language: oneOf(o.language, ['en', 'ar', 'ur'] as const, base?.language ?? 'en') as Lang,
     iqamah: o.iqamah ? normIqamah(o.iqamah) : base?.iqamah ?? defaultIqamah(),
+    // iqamahYear (CSV import) is managed only by the iqamah-csv endpoints.
+    iqamahYear: base?.iqamahYear,
     jumuah: jumuah.length ? jumuah : ['13:30'],
     showSunrise: o.showSunrise === undefined ? base?.showSunrise ?? true : bool(o.showSunrise, true),
     showCountdown: o.showCountdown === undefined ? base?.showCountdown ?? true : bool(o.showCountdown, true),
     showDates: o.showDates === undefined ? base?.showDates ?? true : bool(o.showDates, true),
     showLogo: o.showLogo === undefined ? base?.showLogo ?? true : bool(o.showLogo, true),
-    // backgroundImage is managed only by the upload/delete endpoints, never trusted from the form body.
+    showSeconds: o.showSeconds === undefined ? base?.showSeconds ?? false : bool(o.showSeconds, false),
+    // backgroundImage + logoImage are managed only by the upload/delete endpoints, never trusted from the form body.
     backgroundImage: base?.backgroundImage ?? '',
+    logoImage: base?.logoImage ?? '',
+    labels: normLabels(o.labels, base?.labels),
     footerNote: str(o.footerNote, base?.footerNote ?? '', 160),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };

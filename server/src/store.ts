@@ -65,7 +65,9 @@ function seededTimetable(): Timetable {
     showCountdown: true,
     showDates: true,
     showLogo: true,
+    showSeconds: false,
     backgroundImage: '',
+    logoImage: '',
     footerNote: '',
     createdAt: new Date().toISOString(),
   };
@@ -81,7 +83,9 @@ function migrateTimetable(t: Timetable): Timetable {
     showCountdown: t.showCountdown ?? true,
     showDates: t.showDates ?? true,
     showLogo: t.showLogo ?? true,
+    showSeconds: t.showSeconds ?? false,
     backgroundImage: t.backgroundImage ?? '',
+    logoImage: t.logoImage ?? '',
     // Drop methods we no longer support (was Tehran/Jafari) → safe default.
     method: VALID_METHODS.includes(t.method) ? t.method : 'MWL',
   };

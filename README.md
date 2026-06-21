@@ -19,12 +19,14 @@ each screen shows:
 
 - 🕌 **Prayer timetables** — beautiful, full-screen prayer clocks calculated on the device (no internet
   needed). Make as many as you like, each with its own colours to match the room it hangs in. Shows a large
-  live clock, the Hijri and Gregorian dates, every prayer's **Adhan and Iqamah** time, Jumu'ah, and a gentle
-  countdown to the next prayer with the current prayer highlighted. Design each one in a **live editor** —
-  choose a layout (centered, clock-on-top, or a MasjidBox-style split with a big countdown), colours, which
-  elements show, or your own **custom background image** — and watch it update as you type. A live **sun and
-  moon** arc across the sky by your local time and cast their glow onto the glass; optionally rotate the
-  layout through the day to gently avoid TV burn-in.
+  live clock (with optional ticking **seconds**), the Hijri and Gregorian dates, every prayer's **Adhan and
+  Iqamah** time, Jumu'ah, and a gentle countdown to the next prayer with the current prayer highlighted.
+  Design each one in a **live editor** — choose a layout (centered, clock-on-top, or a MasjidBox-style split
+  with a big countdown), colours, which elements show, your own **custom background image** and **masjid
+  logo** — and watch it update as you type. **Click any name, the masjid title or the footer right in the
+  preview to rename it.** A live **sun and moon** arc across the sky by your local time, casting rays and
+  glow onto the glass; optionally rotate the layout through the day to gently avoid TV burn-in. Prefer exact
+  times? **Upload a whole year of Iqamah times as a CSV** (with a ready-to-edit example you can download).
 - 📷 **Cameras** — bring in any IP/security camera or an imam camera and put it on a screen with one tap
   (great for overflow rooms and the women's section).
 - 🖥️ **HDMI sources** — plug a laptop or a recording into an HDMI-to-network encoder and send it to the
@@ -74,7 +76,7 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.6.3
+    ref: v0.7.0
 ```
 
 ### No install-time settings
