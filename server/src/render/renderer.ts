@@ -12,7 +12,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { config } from '../config';
 import { makeLog } from '../logger';
-import { dimsFor, type Dims } from './svg';
+import { dimsFor, tickerActive, type Dims } from './svg';
 import { RenderWorker } from './renderPool';
 import type { Timetable } from '../types';
 
@@ -132,6 +132,7 @@ class TimetablePipeline extends FfmpegPipeline {
   // is in flight at a time — if the box can't keep up we just skip a tick.
   private readonly worker = new RenderWorker();
   private rendering = false;
+  private looping = false;
 
   constructor(id: string, private readonly getTt: () => Timetable | undefined) {
     super(id);
@@ -144,9 +145,28 @@ class TimetablePipeline extends FfmpegPipeline {
   }
 
   protected override onSpawned(): void {
-    if (!this.timer) this.timer = setInterval(() => this.frame(), 1000);
-    // Kick off an immediate first frame so the stream comes up quickly.
-    setImmediate(() => this.frame());
+    // A self-scheduling loop so we can render faster while a ticker is scrolling
+    // (smoother) and idle at 1 fps otherwise. Survives ffmpeg respawns.
+    if (!this.looping) {
+      this.looping = true;
+      this.loop();
+    }
+  }
+
+  private loop(): void {
+    if (this.stopped) {
+      this.looping = false;
+      return;
+    }
+    this.frame();
+    const tt = this.getTt();
+    let delay = 1000;
+    try {
+      if (tt && tickerActive(tt, new Date())) delay = 250; // ~4fps for a readable scroll
+    } catch {
+      /* keep default */
+    }
+    this.timer = setTimeout(() => this.loop(), delay);
   }
 
   private frame(): void {
@@ -196,8 +216,9 @@ class TimetablePipeline extends FfmpegPipeline {
   }
 
   override stop(): void {
-    if (this.timer) clearInterval(this.timer);
+    if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.looping = false;
     this.worker.dispose();
     super.stop();
   }

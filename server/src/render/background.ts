@@ -9,6 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { config } from '../config';
 
 const uploadsDir = () => path.join(config.dataDir, 'uploads');
@@ -91,9 +92,9 @@ function removeAsset(id: string, kind: 'bg' | 'logo'): void {
     if (!fs.existsSync(dir)) return;
     for (const f of fs.readdirSync(dir)) {
       const matches = f === prefix || f.startsWith(`${prefix}.`);
-      // The background prefix (`<id>`) would also match the logo (`<id>.logo.png`);
-      // exclude logo files when clearing the background.
-      if (matches && !(kind === 'bg' && f.includes('.logo.'))) {
+      // The background prefix (`<id>`) would also match the logo (`<id>.logo.png`)
+      // and announcements (`<id>.ann.…`); exclude those when clearing the background.
+      if (matches && !(kind === 'bg' && (f.includes('.logo.') || f.includes('.ann.')))) {
         try {
           fs.unlinkSync(path.join(dir, f));
         } catch {
@@ -112,6 +113,20 @@ export function isAllowedImageMime(mime: string): boolean {
   return mime in EXT_BY_MIME;
 }
 
+/** The full path of an uploaded file if its name is safe and it exists, else null
+ *  (used to stream announcement thumbnails to the editor). */
+export function uploadFilePath(file: string): { path: string; mime: string } | null {
+  const name = safeName(file);
+  if (!name) return null;
+  const full = path.join(uploadsDir(), name);
+  try {
+    if (!fs.statSync(full).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return { path: full, mime: MIME[path.extname(name).toLowerCase()] ?? 'application/octet-stream' };
+}
+
 // ── Backgrounds ──────────────────────────────────────────────────────────────
 export const backgroundDataUri = (file: string): string | null => dataUri(file);
 export const saveBackground = (id: string, mime: string, data: Buffer): string => saveAsset(id, 'bg', mime, data);
@@ -121,3 +136,49 @@ export const removeBackground = (id: string): void => removeAsset(id, 'bg');
 export const logoDataUri = (file: string): string | null => dataUri(file);
 export const saveLogo = (id: string, mime: string, data: Buffer): string => saveAsset(id, 'logo', mime, data);
 export const removeLogo = (id: string): void => removeAsset(id, 'logo');
+
+// ── Announcement images (many per timetable, each its own file) ──────────────
+export const announcementDataUri = (file: string): string | null => dataUri(file);
+/** Store one announcement image; returns its unique filename `<id>.ann.<rand>.<ext>`. */
+export function saveAnnouncement(id: string, mime: string, data: Buffer): string {
+  const safeId = safeName(id);
+  if (!safeId) throw new Error('invalid id');
+  const ext = EXT_BY_MIME[mime] ?? '.png';
+  fs.mkdirSync(uploadsDir(), { recursive: true });
+  const name = `${safeId}.ann.${crypto.randomBytes(5).toString('hex')}${ext}`;
+  fs.writeFileSync(path.join(uploadsDir(), name), data);
+  cache.delete(name);
+  return name;
+}
+/** Delete a single announcement image by its (validated) filename. */
+export function removeAnnouncement(file: string): void {
+  const name = safeName(file);
+  if (!name || !name.includes('.ann.')) return;
+  try {
+    fs.unlinkSync(path.join(uploadsDir(), name));
+  } catch {
+    /* already gone */
+  }
+  cache.delete(name);
+}
+/** Delete every announcement image belonging to timetable `id` (on timetable delete). */
+export function removeAllAnnouncements(id: string): void {
+  const safeId = safeName(id);
+  if (!safeId) return;
+  const dir = uploadsDir();
+  try {
+    if (!fs.existsSync(dir)) return;
+    for (const f of fs.readdirSync(dir)) {
+      if (f.startsWith(`${safeId}.ann.`)) {
+        try {
+          fs.unlinkSync(path.join(dir, f));
+        } catch {
+          /* ignore */
+        }
+        cache.delete(f);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}

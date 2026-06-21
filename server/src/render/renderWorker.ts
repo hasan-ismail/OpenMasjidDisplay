@@ -16,8 +16,8 @@
  */
 import { parentPort } from 'node:worker_threads';
 import { Resvg } from '@resvg/resvg-js';
-import { renderDisplaySvg } from './svg';
-import { backgroundDataUri, logoDataUri } from './background';
+import { renderDisplaySvg, activeAnnouncementImage } from './svg';
+import { backgroundDataUri, logoDataUri, announcementDataUri } from './background';
 import { fontOptions } from './fonts';
 import type { Timetable } from '../types';
 
@@ -72,9 +72,12 @@ port.on('message', (msg: Req) => {
       port.postMessage({ id, ok: true, buf: ab }, [ab]);
       return;
     }
-    // raw RGBA for the video pipeline
-    const { bg, logo } = assets(tt);
-    const svg = renderDisplaySvg(tt, now, { bg, logo });
+    // raw RGBA for the video pipeline. During an announcement slideshow phase the
+    // backdrop is the (sharp) announcement image instead of the custom/themed one.
+    const { logo } = assets(tt);
+    const annFile = activeAnnouncementImage(tt, now);
+    const bg = annFile ? announcementDataUri(annFile) : tt.backgroundImage ? backgroundDataUri(tt.backgroundImage) : null;
+    const svg = renderDisplaySvg(tt, now, { bg, logo, bgClear: !!annFile });
     const r = new Resvg(svg, { font: fontOptions() }).render();
     const px = r.pixels;
     const ab = new ArrayBuffer(px.byteLength);

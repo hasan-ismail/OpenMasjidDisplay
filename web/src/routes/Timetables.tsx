@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot } from '../types';
+import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage } from '../types';
 import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconClock, IconExpand, useToast } from '../ui';
+import { timezoneOptions } from '../timezones';
 
 interface Props {
   state: AppState;
@@ -249,6 +250,40 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
     }
   };
 
+  // ── Announcement slideshow + ticker (local form state; images via endpoints) ──
+  const ann: Announcements = f.announcements ?? { enabled: false, images: [], start: '', end: '', everySeconds: 60, forSeconds: 20, imageSeconds: 8 };
+  const setAnn = (patch: Partial<Announcements>) => set('announcements', { ...ann, ...patch });
+  const addAnnImage = (file: File) => {
+    if (!tt) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const u = await api.uploadAnnouncement(tt.id, String(reader.result));
+        setAnn({ images: u.announcements?.images ?? ann.images });
+        toast('Image added.');
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not upload the image.', 'error');
+      }
+    };
+    reader.onerror = () => toast('Could not read that image.', 'error');
+    reader.readAsDataURL(file);
+  };
+  const removeAnnImage = async (fileName: string) => {
+    if (!tt) return;
+    try {
+      const u = await api.removeAnnouncement(tt.id, fileName);
+      setAnn({ images: u.announcements?.images ?? ann.images.filter((x) => x !== fileName) });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not remove the image.', 'error');
+    }
+  };
+
+  const tk: Ticker = f.ticker ?? { enabled: false, messages: [] };
+  const setTk = (patch: Partial<Ticker>) => set('ticker', { ...tk, ...patch });
+  const addMsg = () => setTk({ messages: [...tk.messages, { id: `m${Date.now()}`, text: '', start: '', end: '' }] });
+  const setMsg = (i: number, patch: Partial<TickerMessage>) => setTk({ messages: tk.messages.map((mm, j) => (j === i ? { ...mm, ...patch } : mm)) });
+  const delMsg = (i: number) => setTk({ messages: tk.messages.filter((_, j) => j !== i) });
+
   const content = (
       <div className="studio">
         <div className="studio__preview">
@@ -302,7 +337,11 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           </div>
 
           <div className="grid2">
-            <Field label="Time zone" hint="e.g. America/New_York (blank = server)"><input className="input" value={f.timezone} onChange={(e) => set('timezone', e.target.value)} /></Field>
+            <Field label="Time zone" hint="Pick the closest city/zone.">
+              <select className="select" value={f.timezone} onChange={(e) => set('timezone', e.target.value)}>
+                {timezoneOptions(f.timezone).map((tz) => <option key={tz.id || 'server'} value={tz.id}>{tz.label}</option>)}
+              </select>
+            </Field>
             <Field label="Clock format">
               <select className="select" value={f.timeFormat} onChange={(e) => set('timeFormat', e.target.value as Form['timeFormat'])}>
                 <option value="12h">12-hour</option>
@@ -455,6 +494,63 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           ) : (
             <span className="hint">Create the timetable first, then you can upload a yearly CSV.</span>
           )}
+
+          <h3 className="section-title">Announcement slideshow (images)</h3>
+          {tt ? (
+            <>
+              <div className="toggle-row row-between" style={{ marginBlockEnd: '0.7rem' }}>
+                <span className="label" style={{ margin: 0 }}>
+                  Cycle images over the display <span className="hint">— prayer times stay visible</span>
+                </span>
+                <Toggle checked={ann.enabled} onChange={(v) => setAnn({ enabled: v })} label="Cycle announcement images" />
+              </div>
+              <div className="ann-thumbs">
+                {ann.images.map((im) => (
+                  <div key={im} className="ann-thumb">
+                    <img src={api.announcementImageUrl(tt.id, im)} alt="Announcement" />
+                    <button type="button" className="ann-thumb__x" onClick={() => removeAnnImage(im)} aria-label="Remove image">×</button>
+                  </div>
+                ))}
+                <label className="ann-add" style={{ cursor: 'pointer' }}>
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) addAnnImage(file); e.target.value = ''; }} />
+                  <IconPlus size={18} />
+                </label>
+              </div>
+              <div className="grid2" style={{ marginBlockStart: '0.7rem' }}>
+                <Field label="Show timetable for (seconds)"><input className="input" type="number" min={5} max={3600} value={ann.everySeconds} onChange={(e) => setAnn({ everySeconds: Number(e.target.value) })} /></Field>
+                <Field label="Then show images for (seconds)"><input className="input" type="number" min={3} max={1800} value={ann.forSeconds} onChange={(e) => setAnn({ forSeconds: Number(e.target.value) })} /></Field>
+              </div>
+              <div className="grid2">
+                <Field label="Each image shows (seconds)"><input className="input" type="number" min={2} max={600} value={ann.imageSeconds} onChange={(e) => setAnn({ imageSeconds: Number(e.target.value) })} /></Field>
+                <Field label="Active window (optional)" hint="Leave blank for all day.">
+                  <div className="row" style={{ gap: '0.4rem', alignItems: 'center' }}>
+                    <input className="input" type="time" value={ann.start} onChange={(e) => setAnn({ start: e.target.value })} />
+                    <span className="muted">to</span>
+                    <input className="input" type="time" value={ann.end} onChange={(e) => setAnn({ end: e.target.value })} />
+                  </div>
+                </Field>
+              </div>
+            </>
+          ) : (
+            <span className="hint">Create the timetable first, then you can add announcement images.</span>
+          )}
+
+          <h3 className="section-title">Scrolling messages (ticker)</h3>
+          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.7rem' }}>
+            <span className="label" style={{ margin: 0 }}>Scroll short messages along the bottom</span>
+            <Toggle checked={tk.enabled} onChange={(v) => setTk({ enabled: v })} label="Scroll messages along the bottom" />
+          </div>
+          <div className="list">
+            {tk.messages.map((mm, i) => (
+              <div key={mm.id} className="msg-row">
+                <input className="input" value={mm.text} onChange={(e) => setMsg(i, { text: e.target.value })} placeholder="e.g. Fundraising dinner this Saturday at 7pm" />
+                <input className="input msg-time" type="time" value={mm.start} onChange={(e) => setMsg(i, { start: e.target.value })} title="Show from (optional)" />
+                <input className="input msg-time" type="time" value={mm.end} onChange={(e) => setMsg(i, { end: e.target.value })} title="Show until (optional)" />
+                <button type="button" className="icon-btn" onClick={() => delMsg(i)} aria-label="Remove message"><IconTrash size={15} /></button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="btn btn--ghost btn--sm" style={{ marginBlockStart: '0.5rem' }} onClick={addMsg}><IconPlus size={14} /> Add message</button>
         </div>
       </div>
   );

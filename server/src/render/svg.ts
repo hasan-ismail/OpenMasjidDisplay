@@ -156,6 +156,55 @@ function hijri(parts: { year: number; month: number; day: number }, lang: string
   }
 }
 
+/** Is the current minute-of-day inside a daily "HH:MM"–"HH:MM" window? Empty/equal
+ *  bounds = always on. Handles windows that wrap past midnight. */
+function inDailyWindow(nowMin: number, start: string, end: string): boolean {
+  const s = parseHHMM(start);
+  const e = parseHHMM(end);
+  if (s == null || e == null) return true;
+  const sm = Math.round(s * 60);
+  const em = Math.round(e * 60);
+  if (sm === em) return true;
+  return sm < em ? nowMin >= sm && nowMin < em : nowMin >= sm || nowMin < em;
+}
+
+/** Which announcement image (if any) should be the backdrop right now. The display
+ *  alternates: `everySeconds` of normal timetable, then `forSeconds` of cycling
+ *  images (each `imageSeconds`), within the daily window. Stateless — derived from
+ *  the clock so every screen/worker agrees. Returns the image filename or null. */
+export function activeAnnouncementImage(tt: Timetable, now: Date): string | null {
+  const a = tt.announcements;
+  if (!a || !a.enabled || !a.images || a.images.length === 0) return null;
+  const parts = localParts(now, tt.timezone || undefined);
+  if (!inDailyWindow(parts.hour * 60 + parts.minute, a.start, a.end)) return null;
+  const every = Math.max(1, Math.floor(a.everySeconds));
+  const forS = Math.max(1, Math.floor(a.forSeconds));
+  const imgS = Math.max(1, Math.floor(a.imageSeconds));
+  const cycle = every + forS;
+  const phase = ((Math.floor(now.getTime() / 1000) % cycle) + cycle) % cycle;
+  if (phase < every) return null; // showing the normal timetable
+  const idx = Math.floor((phase - every) / imgS) % a.images.length;
+  return a.images[idx] ?? null;
+}
+
+/** The combined ticker text active right now (messages within their windows), or ''. */
+function activeTickerText(tt: Timetable, parts: ReturnType<typeof localParts>): string {
+  const tk = tt.ticker;
+  if (!tk || !tk.enabled || !tk.messages || tk.messages.length === 0) return '';
+  const nowMin = parts.hour * 60 + parts.minute;
+  return tk.messages
+    .filter((mm) => mm.text.trim() && inDailyWindow(nowMin, mm.start, mm.end))
+    .map((mm) => mm.text.trim())
+    .join('      •      ');
+}
+
+/** Whether the timetable currently has a scrolling ticker (so the renderer can pick
+ *  a faster frame cadence for smoother scrolling). */
+export function tickerActive(tt: Timetable, now: Date): boolean {
+  if (!tt.ticker?.enabled || !tt.ticker.messages?.length) return false;
+  return activeTickerText(tt, localParts(now, tt.timezone || undefined)).length > 0;
+}
+
 interface TextOpts {
   size: number;
   fill: string;
@@ -596,23 +645,58 @@ function clockGroup(cx: number, cy: number, size: number, clock: ClockText, show
   return out.join('');
 }
 
-/** Big H : M : S countdown hero (used by the split / MasjidBox-style layout). */
+/** A scrolling ticker strip along the bottom. The text is tiled and offset by the
+ *  clock so it scrolls continuously; smoothness depends on the frame cadence (the
+ *  renderer speeds up while a ticker is active). */
+function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number): string {
+  const bandH = clamp(H * 0.07, 30, 92);
+  const y = H - bandH;
+  const fs = clamp(bandH * 0.46, 14, 40);
+  const out: string[] = [];
+  out.push(rect(0, y, W, bandH, 0, hexToRgba(p.bg, 0.6)));
+  out.push(rect(0, y, W, Math.max(1.5, bandH * 0.025), 0, hexToRgba(p.primary, 0.55)));
+  const seg = `${msg}      •      `;
+  const segW = Math.max(60, approxWidth(seg, fs));
+  const speed = clamp(Math.min(W, H) * 0.05, 45, 120); // px per second
+  const offset = ((now.getTime() / 1000) * speed) % segW;
+  const baseline = y + bandH * 0.66;
+  for (let x = -offset; x < W; x += segW) {
+    out.push(text(x, baseline, seg, { size: fs, fill: p.text, family: FONT_SANS, weight: 600, anchor: 'start' }));
+  }
+  return out.join('');
+}
+
+/** Big H : M : S countdown hero (used by the split / MasjidBox-style layout). The
+ *  whole time is one string (so the colons can never overlap the digits), and the
+ *  HOURS/MINUTES/SECONDS labels are placed under each pair using measured widths. */
 function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms: [number, number, number], p: Palette, L: Record<string, string>): string {
   const out: string[] = [];
-  const numSize = clamp(w * 0.2, 38, 168);
-  const gapX = numSize * 1.18;
-  const colon = numSize * 0.62;
-  const xs = [cx - gapX, cx, cx + gapX];
+  let numSize = clamp(w * 0.2, 36, 160);
+  const hh = pad2(hms[0]);
+  const mm = pad2(hms[1]);
+  const ss = pad2(hms[2]);
+  const timeStr = `${hh}:${mm}:${ss}`;
+  // Shrink to fit the available width so two-digit values never get squished.
+  const strW = approxWidth(timeStr, numSize);
+  if (strW > w * 0.94) numSize *= (w * 0.94) / strW;
+
+  const pairW = approxWidth('00', numSize);
+  const colonW = approxWidth(':', numSize);
+  const total = pairW * 3 + colonW * 2;
+  const startX = cx - total / 2;
+  const centres = [
+    startX + pairW / 2,
+    startX + pairW + colonW + pairW / 2,
+    startX + pairW * 2 + colonW * 2 + pairW / 2,
+  ];
   const baseline = cy + numSize * 0.34;
-  const nums = [pad2(hms[0]), pad2(hms[1]), pad2(hms[2])];
+
+  out.push(text(cx, cy - numSize * 0.7, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
+  out.push(text(cx, baseline, timeStr, { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
   const lab = ['HOURS', 'MINUTES', 'SECONDS'];
-  out.push(text(cx, cy - numSize * 0.78, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
   for (let i = 0; i < 3; i++) {
-    out.push(text(xs[i], baseline, nums[i], { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', letter: -1 }));
-    out.push(text(xs[i], cy + numSize * 0.62, lab[i], { size: clamp(numSize * 0.13, 9, 20), fill: p.textFaint, weight: 700, anchor: 'middle', letter: 2 }));
+    out.push(text(centres[i], cy + numSize * 0.62, lab[i], { size: clamp(numSize * 0.13, 9, 20), fill: p.textFaint, weight: 700, anchor: 'middle', letter: 2 }));
   }
-  out.push(text((xs[0] + xs[1]) / 2, baseline - numSize * 0.06, ':', { size: colon, fill: p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
-  out.push(text((xs[1] + xs[2]) / 2, baseline - numSize * 0.06, ':', { size: colon, fill: p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
   return out.join('');
 }
 
@@ -718,6 +802,8 @@ function setupNeeded(p: Palette, W: number, H: number, masjidName: string): stri
 export interface RenderOpts {
   /** data: URI of a custom background image, or null for the themed scene */
   bg?: string | null;
+  /** when true, the bg is an announcement image → show it sharp (no frost blur) */
+  bgClear?: boolean;
   /** data: URI of an uploaded masjid logo, or null for the built-in mark */
   logo?: string | null;
   /** when present, click-to-edit text regions are collected here (no extra cost
@@ -771,6 +857,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
   const greg = gregorian(m.parts, tt.language, tt.gregorianOffset ?? 0);
   const hij = hijri(m.parts, tt.language, tt.hijriOffset ?? 0);
+  const tickerText = activeTickerText(tt, m.parts);
 
   const portrait = tt.orientation === 'portrait';
   const base = tt.layoutCarousel ? CAROUSEL[Math.floor((m.parts.hour * 60 + m.parts.minute) / 15) % 3] : tt.layout;
@@ -784,7 +871,10 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
   // ── Background + sky ───────────────────────────────────────────────────────
   if (hasImage) {
-    out.push(`<image href="${opts.bg}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" filter="url(#frost)"/>`);
+    // A custom background is frosted (so text reads over it); an announcement image
+    // is shown sharp — it's the thing people are meant to look at.
+    const filter = opts.bgClear ? '' : ' filter="url(#frost)"';
+    out.push(`<image href="${opts.bg}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"${filter}/>`);
     out.push(rect(0, 0, W, H, 0, 'url(#scrim)'));
   } else {
     out.push(rect(0, 0, W, H, 0, 'url(#scene)'));
@@ -842,11 +932,14 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     }
   }
 
-  // ── Footer ─────────────────────────────────────────────────────────────────
-  if (tt.showFooter) {
+  // ── Footer (hidden when the ticker is running — they share the bottom strip) ──
+  if (tt.showFooter && !tickerText) {
     const methodNote = `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
     out.push(text(W / 2, H - P * 0.5, tt.footerNote || methodNote, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5, editId: 'footerNote' }));
   }
+
+  // ── Scrolling ticker (drawn last, over everything) ───────────────────────────
+  if (tickerText) out.push(tickerBand(tickerText, now, p, W, H));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }

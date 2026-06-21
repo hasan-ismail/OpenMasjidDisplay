@@ -37,6 +37,37 @@ export interface IqamahConfig {
  *  entry it wins over the IqamahConfig rule; missing dates fall back to the rule. */
 export type IqamahYear = Record<string, Partial<Record<'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha' | 'jumuah', string>>>;
 
+/** Image announcement slideshow: between spells of the normal display, the uploaded
+ *  images cycle as the backdrop (prayer times stay on top), within a daily window. */
+export interface Announcements {
+  enabled: boolean;
+  /** uploaded image filenames under /data/uploads */
+  images: string[];
+  /** daily active window "HH:MM" ('' = all day) */
+  start: string;
+  end: string;
+  /** seconds the normal timetable shows before the slideshow runs */
+  everySeconds: number;
+  /** seconds the slideshow runs before the main layout takes back over */
+  forSeconds: number;
+  /** seconds each image is shown */
+  imageSeconds: number;
+}
+
+/** One scrolling ticker message, optionally scheduled to a daily window. */
+export interface TickerMessage {
+  id: string;
+  text: string;
+  /** daily window "HH:MM" ('' = always, while the ticker is enabled) */
+  start: string;
+  end: string;
+}
+/** A bottom scrolling ticker of short messages. */
+export interface Ticker {
+  enabled: boolean;
+  messages: TickerMessage[];
+}
+
 /** A full-screen prayer-times display, themeable per room. */
 export interface Timetable {
   id: string;
@@ -84,6 +115,10 @@ export interface Timetable {
   logoImage: string;
   /** custom on-screen label overrides (e.g. rename a prayer), keyed by label key */
   labels?: Record<string, string>;
+  /** image announcement slideshow (images managed by the announcements endpoints) */
+  announcements?: Announcements;
+  /** bottom scrolling text ticker */
+  ticker?: Ticker;
   footerNote: string;
   createdAt: string;
 }

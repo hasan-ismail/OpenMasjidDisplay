@@ -17,7 +17,17 @@ import {
 } from './auth';
 import { platformUser, ssoConfigured } from './omos';
 import { THEMES } from './render/theme';
-import { saveBackground, removeBackground, saveLogo, removeLogo, isAllowedImageMime } from './render/background';
+import {
+  saveBackground,
+  removeBackground,
+  saveLogo,
+  removeLogo,
+  saveAnnouncement,
+  removeAnnouncement,
+  removeAllAnnouncements,
+  uploadFilePath,
+  isAllowedImageMime,
+} from './render/background';
 import { renderPreviewPng, renderPreviewMeta } from './render/renderPool';
 import { parseIqamahCsv, toCsv, templateCsv } from './iqamahCsv';
 import {
@@ -266,6 +276,7 @@ export function createApi(deps: Deps) {
         if (method === 'DELETE') {
           removeBackground(id);
           removeLogo(id);
+          removeAllAnnouncements(id);
           store.update((db) => void (db.timetables = db.timetables.filter((t) => t.id !== id)));
           return sendJson(res, 200, { ok: true });
         }
@@ -369,6 +380,58 @@ export function createApi(deps: Deps) {
           store.update((db) => void delete db.timetables[idx].iqamahYear);
           return sendJson(res, 200, store.db.timetables[idx]);
         }
+      }
+
+      // ---- Announcement slideshow images ----------------------------------
+      const annMatch = /^\/api\/timetables\/([\w-]+)\/announcements$/.exec(pathname);
+      if (annMatch && method === 'POST') {
+        const id = annMatch[1];
+        const idx = store.db.timetables.findIndex((t) => t.id === id);
+        if (idx < 0) return sendJson(res, 404, { error: 'Timetable not found.' });
+        const body = await readBody(req, 8_000_000);
+        const m = /^data:([^;,]+);base64,(.+)$/s.exec(String(body.data ?? ''));
+        if (!m || !isAllowedImageMime(m[1])) {
+          return sendJson(res, 400, { error: 'Please choose a PNG, JPG, WebP or GIF image.' });
+        }
+        let buf: Buffer;
+        try {
+          buf = Buffer.from(m[2], 'base64');
+        } catch {
+          return sendJson(res, 400, { error: 'That image could not be read.' });
+        }
+        if (buf.length > 6_000_000) {
+          return sendJson(res, 400, { error: 'That image is too large — please keep it under about 6 MB.' });
+        }
+        const file = saveAnnouncement(id, m[1], buf);
+        store.update((db) => {
+          const a = db.timetables[idx].announcements ?? {
+            enabled: false, images: [], start: '', end: '', everySeconds: 60, forSeconds: 20, imageSeconds: 8,
+          };
+          a.images = [...a.images, file].slice(0, 30);
+          db.timetables[idx].announcements = a;
+        });
+        return sendJson(res, 200, store.db.timetables[idx]);
+      }
+      const annFileMatch = /^\/api\/timetables\/([\w-]+)\/announcements\/(.+)$/.exec(pathname);
+      if (annFileMatch && (method === 'DELETE' || method === 'GET')) {
+        const id = annFileMatch[1];
+        const file = decodeURIComponent(annFileMatch[2]);
+        const idx = store.db.timetables.findIndex((t) => t.id === id);
+        if (idx < 0) return sendJson(res, 404, { error: 'Timetable not found.' });
+        if (method === 'GET') {
+          // Serve the image so the editor can show a thumbnail (must belong to this id).
+          const f = file.startsWith(`${id}.ann.`) ? uploadFilePath(file) : null;
+          if (!f) return sendJson(res, 404, { error: 'Image not found.' });
+          res.writeHead(200, { 'content-type': f.mime, 'cache-control': 'private, max-age=300' });
+          fs.createReadStream(f.path).pipe(res);
+          return;
+        }
+        removeAnnouncement(file);
+        store.update((db) => {
+          const a = db.timetables[idx].announcements;
+          if (a) a.images = a.images.filter((f) => f !== file);
+        });
+        return sendJson(res, 200, store.db.timetables[idx]);
       }
 
       // ---- Sources ---------------------------------------------------------

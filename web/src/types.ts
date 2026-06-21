@@ -21,6 +21,17 @@ export interface IqamahConfig {
   isha: IqamahRule;
 }
 export type IqamahYear = Record<string, Partial<Record<'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha' | 'jumuah', string>>>;
+export interface Announcements {
+  enabled: boolean;
+  images: string[];
+  start: string;
+  end: string;
+  everySeconds: number;
+  forSeconds: number;
+  imageSeconds: number;
+}
+export interface TickerMessage { id: string; text: string; start: string; end: string }
+export interface Ticker { enabled: boolean; messages: TickerMessage[] }
 export interface Timetable {
   id: string;
   name: string;
@@ -52,6 +63,8 @@ export interface Timetable {
   backgroundImage: string;
   logoImage: string;
   labels?: Record<string, string>;
+  announcements?: Announcements;
+  ticker?: Ticker;
   footerNote: string;
   createdAt: string;
 }

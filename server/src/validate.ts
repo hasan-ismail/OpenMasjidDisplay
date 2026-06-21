@@ -19,6 +19,8 @@ import type {
   Lang,
   Quality,
   Orientation,
+  Announcements,
+  Ticker,
 } from './types';
 
 type Obj = Record<string, unknown>;
@@ -104,6 +106,41 @@ function normIqamah(v: unknown): IqamahConfig {
   };
 }
 
+/** Announcement slideshow timing/window — images are NEVER trusted from the form
+ *  (they're managed by the announcements upload/delete endpoints). */
+function normAnnouncements(v: unknown, base?: Announcements): Announcements | undefined {
+  if (v === undefined) return base;
+  const o = asObj(v);
+  return {
+    enabled: bool(o.enabled, base?.enabled ?? false),
+    images: base?.images ?? [],
+    start: hhmmOrNull(o.start) ?? '',
+    end: hhmmOrNull(o.end) ?? '',
+    everySeconds: intIn(o.everySeconds, base?.everySeconds ?? 60, 5, 3600),
+    forSeconds: intIn(o.forSeconds, base?.forSeconds ?? 20, 3, 1800),
+    imageSeconds: intIn(o.imageSeconds, base?.imageSeconds ?? 8, 2, 600),
+  };
+}
+
+function normTicker(v: unknown, base?: Ticker): Ticker | undefined {
+  if (v === undefined) return base;
+  const o = asObj(v);
+  const arr = Array.isArray(o.messages) ? o.messages : [];
+  const messages = arr
+    .slice(0, 20)
+    .map((mm) => {
+      const mo = asObj(mm);
+      return {
+        id: str(mo.id, rid('msg'), 40) || rid('msg'),
+        text: str(mo.text, '', 200),
+        start: hhmmOrNull(mo.start) ?? '',
+        end: hhmmOrNull(mo.end) ?? '',
+      };
+    })
+    .filter((mm) => mm.text.trim() !== '');
+  return { enabled: bool(o.enabled, base?.enabled ?? false), messages };
+}
+
 export function normTimetable(input: unknown, base?: Timetable): Timetable {
   const o = asObj(input);
   const accentRaw = str(o.accent, '', 7).trim();
@@ -145,6 +182,8 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     backgroundImage: base?.backgroundImage ?? '',
     logoImage: base?.logoImage ?? '',
     labels: normLabels(o.labels, base?.labels),
+    announcements: normAnnouncements(o.announcements, base?.announcements),
+    ticker: normTicker(o.ticker, base?.ticker),
     footerNote: str(o.footerNote, base?.footerNote ?? '', 160),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };

@@ -71,6 +71,13 @@ export const api = {
   iqamahCsvUrl: (id: string, mode?: 'template') =>
     `/api/timetables/${id}/iqamah-csv${mode ? `?mode=${mode}` : ''}`,
 
+  uploadAnnouncement: (id: string, dataUrl: string) =>
+    req<Timetable>('POST', `/api/timetables/${id}/announcements`, { data: dataUrl }),
+  removeAnnouncement: (id: string, file: string) =>
+    req<Timetable>('DELETE', `/api/timetables/${id}/announcements/${encodeURIComponent(file)}`),
+  announcementImageUrl: (id: string, file: string) =>
+    `/api/timetables/${id}/announcements/${encodeURIComponent(file)}`,
+
   /** Live PNG preview of an unsaved timetable form; returns an object URL. */
   previewLive: async (body: Partial<Timetable>): Promise<string> => {
     const res = await fetch('/api/preview', {
