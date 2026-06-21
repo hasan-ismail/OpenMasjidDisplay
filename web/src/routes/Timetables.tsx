@@ -110,7 +110,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     return { ...tt, latitude: tt.latitude == null ? '' : String(tt.latitude), longitude: tt.longitude == null ? '' : String(tt.longitude) };
   }
   return {
-    id: '', name: 'New timetable', themeId: 'emerald', accent: undefined,
+    id: '', name: 'New timetable', themeId: 'emerald', accent: undefined, textColor: '',
     orientation: 'landscape', quality: state.settings.defaultQuality, layout: 'centered', layoutCarousel: false,
     masjidName: state.timetables[0]?.masjidName ?? 'Our Masjid',
     latitude: '', longitude: '',
@@ -424,6 +424,31 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
               </label>
               {f.accent && <button type="button" className="btn btn--ghost btn--sm" onClick={() => set('accent', undefined)}>Use theme colour</button>}
             </div>
+          </Field>
+
+          <Field label="Text colour">
+            <div className="chips">
+              <button type="button" className={`chip${!f.textColor ? ' is-active' : ''}`} onClick={() => set('textColor', '')} title="Pick the most readable colour automatically">
+                <span className="chip-dot" style={{ background: 'linear-gradient(135deg,#f5f8ff 50%,#10161d 50%)' }} />
+                Auto
+              </button>
+              <button type="button" className={`chip${f.textColor?.toLowerCase() === '#f5f8ff' ? ' is-active' : ''}`} onClick={() => set('textColor', '#f5f8ff')}>
+                <span className="chip-dot" style={{ background: '#f5f8ff' }} />
+                Light
+              </button>
+              <button type="button" className={`chip${f.textColor?.toLowerCase() === '#10161d' ? ' is-active' : ''}`} onClick={() => set('textColor', '#10161d')}>
+                <span className="chip-dot" style={{ background: '#10161d' }} />
+                Dark
+              </button>
+            </div>
+            <div className="row" style={{ gap: '0.6rem', marginBlockStart: '0.55rem' }}>
+              <label className="row" style={{ gap: '0.45rem' }}>
+                <input type="color" className="color-input" value={f.textColor || '#f5f8ff'} onChange={(e) => set('textColor', e.target.value)} />
+                <span className="hint">Custom colour</span>
+              </label>
+              {f.textColor && <button type="button" className="btn btn--ghost btn--sm" onClick={() => set('textColor', '')}>Auto contrast</button>}
+            </div>
+            <p className="hint" style={{ marginBlockStart: '0.4rem' }}>Auto keeps your theme's text, and switches to dark text on a light photo so it always stays readable.</p>
           </Field>
 
           <Field label="Background">

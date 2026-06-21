@@ -37,6 +37,8 @@ export interface Timetable {
   name: string;
   themeId: string;
   accent?: string;
+  /** on-screen text colour: '' = auto contrast; or a hex */
+  textColor?: string;
   orientation: Orientation;
   quality: Quality;
   layout: TimetableLayout;

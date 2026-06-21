@@ -76,6 +76,8 @@ export interface Timetable {
   themeId: string;
   /** optional custom primary colour (hex) overriding the preset */
   accent?: string;
+  /** on-screen text colour: '' = auto (theme, or auto-contrast against a light photo); or a hex */
+  textColor?: string;
   orientation: Orientation;
   quality: Quality;
   /** on-screen arrangement preset */

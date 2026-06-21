@@ -85,6 +85,7 @@ function migrateTimetable(t: Timetable): Timetable {
     ...t,
     layout: t.layout ?? 'centered',
     layoutCarousel: t.layoutCarousel ?? false,
+    textColor: t.textColor ?? '',
     showCountdown: t.showCountdown ?? true,
     showDates: t.showDates ?? true,
     showLogo: t.showLogo ?? true,

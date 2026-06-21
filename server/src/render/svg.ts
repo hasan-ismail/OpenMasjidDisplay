@@ -99,6 +99,36 @@ function hexToRgba(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
+/** Lighten a solid hex toward white by `amt` (0..1). Used so the clock gradient
+ *  follows the chosen text colour instead of always starting at white. */
+function lighten(hex: string, amt: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * clamp(amt, 0, 1));
+  const r = mix((n >> 16) & 255), g = mix((n >> 8) & 255), b = mix(n & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * Resolve the effective text colours for a timetable. A manual `textColor`
+ * (hex) always wins. Otherwise "auto": keep the theme's tuned text, except when
+ * a custom background photo is light enough that light text would wash out — then
+ * flip to dark text. `bgLight` is decided by the render worker (it can sample the
+ * photo); themed scenes leave it undefined and use the theme palette as-is.
+ */
+function applyTextColor(base: Palette, textColor: string | undefined, hasImage: boolean, bgLight: boolean): Palette {
+  if (textColor && /^#?[0-9a-f]{6}$/i.test(textColor.trim())) {
+    const hex = textColor.trim().startsWith('#') ? textColor.trim() : `#${textColor.trim()}`;
+    return { ...base, text: hex, textDim: hexToRgba(hex, 0.74), textFaint: hexToRgba(hex, 0.48) };
+  }
+  if (hasImage && bgLight) {
+    const dark = '#10161d';
+    return { ...base, text: dark, textDim: hexToRgba(dark, 0.76), textFaint: hexToRgba(dark, 0.52) };
+  }
+  return base;
+}
+
 interface ClockText {
   time: string;
   period: string;
@@ -484,7 +514,7 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
       <stop offset="100%" stop-color="${hexToRgba(glowColor, 0)}"/>
     </linearGradient>
     <linearGradient id="clockg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="0%" stop-color="${lighten(p.text, 0.3)}"/>
       <stop offset="100%" stop-color="${p.textDim}"/>
     </linearGradient>
     <linearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
@@ -693,35 +723,17 @@ function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, ba
 
 /** Big H : M : S countdown hero (used by the split / MasjidBox-style layout). The
  *  whole time is one string (so the colons can never overlap the digits), and the
- *  HOURS/MINUTES/SECONDS labels are placed under each pair using measured widths. */
+ *  the colons can never overlap the digits. */
 function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms: [number, number, number], p: Palette, L: Record<string, string>): string {
   const out: string[] = [];
   let numSize = clamp(w * 0.2, 36, 160);
-  const hh = pad2(hms[0]);
-  const mm = pad2(hms[1]);
-  const ss = pad2(hms[2]);
-  const timeStr = `${hh}:${mm}:${ss}`;
+  const timeStr = `${pad2(hms[0])}:${pad2(hms[1])}:${pad2(hms[2])}`;
   // Shrink to fit the available width so two-digit values never get squished.
   const strW = approxWidth(timeStr, numSize);
   if (strW > w * 0.94) numSize *= (w * 0.94) / strW;
-
-  const pairW = approxWidth('00', numSize);
-  const colonW = approxWidth(':', numSize);
-  const total = pairW * 3 + colonW * 2;
-  const startX = cx - total / 2;
-  const centres = [
-    startX + pairW / 2,
-    startX + pairW + colonW + pairW / 2,
-    startX + pairW * 2 + colonW * 2 + pairW / 2,
-  ];
   const baseline = cy + numSize * 0.34;
-
-  out.push(text(cx, cy - numSize * 0.7, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
+  out.push(text(cx, cy - numSize * 0.5, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
   out.push(text(cx, baseline, timeStr, { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
-  const lab = ['HOURS', 'MINUTES', 'SECONDS'];
-  for (let i = 0; i < 3; i++) {
-    out.push(text(centres[i], cy + numSize * 0.62, lab[i], { size: clamp(numSize * 0.13, 9, 20), fill: p.textFaint, weight: 700, anchor: 'middle', letter: 2 }));
-  }
   return out.join('');
 }
 
@@ -736,14 +748,23 @@ function splitLeftPanel(
   const pad = leftW * 0.075;
   out.push(glass(leftX, top, leftW, leftH, Math.min(leftW, leftH) * 0.05));
   let cy = top + pad;
+  const nameMax = leftW - 2 * pad;
   if (tt.showLogo) {
-    const ms = leftW * 0.13;
+    const ms = leftW * 0.14;
     out.push(mark(leftX + pad, cy, ms, p.primary, logo));
-    out.push(text(leftX + pad + ms + leftW * 0.04, cy + ms * 0.78, tt.masjidName, { size: clamp(leftW * 0.075, 14, 30), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start', editId: 'masjidName' }));
+    const nameX = leftX + pad + ms + leftW * 0.04;
+    const avail = leftX + leftW - pad - nameX;
+    let ns = clamp(leftW * 0.115, 16, 46);
+    const nw = approxWidth(tt.masjidName, ns);
+    if (nw > avail) ns = Math.max(13, ns * (avail / nw));
+    out.push(text(nameX, cy + ms * 0.66 + ns * 0.34, tt.masjidName, { size: ns, fill: p.text, family: FONT_DISPLAY, weight: 700, anchor: 'start', editId: 'masjidName' }));
     cy += ms + pad * 0.7;
   } else {
-    out.push(text(leftX + pad, cy + leftW * 0.08, tt.masjidName, { size: clamp(leftW * 0.085, 14, 32), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start', editId: 'masjidName' }));
-    cy += leftW * 0.13;
+    let ns = clamp(leftW * 0.14, 18, 56);
+    const nw = approxWidth(tt.masjidName, ns);
+    if (nw > nameMax) ns = Math.max(14, ns * (nameMax / nw));
+    out.push(text(leftX + pad, cy + ns * 0.82, tt.masjidName, { size: ns, fill: p.text, family: FONT_DISPLAY, weight: 700, anchor: 'start', editId: 'masjidName' }));
+    cy += ns * 1.25;
   }
   const clockStr = clock.time + (clock.period ? ` ${clock.period}` : '');
   const maxW = leftW - 2 * pad;
@@ -859,6 +880,10 @@ export interface RenderOpts {
   announcement?: string | null;
   /** data: URI of an uploaded masjid logo, or null for the built-in mark */
   logo?: string | null;
+  /** auto text-contrast: the render worker sets this true when the custom background
+   *  photo is light enough that the theme's light text would wash out (→ use dark text).
+   *  Only consulted when the timetable's textColor is "auto" (empty). */
+  bgLight?: boolean;
   /** video pipeline: draw only the ticker strip (ffmpeg overlays the moving text) */
   tickerBandOnly?: boolean;
   /** when present, click-to-edit text regions are collected here (no extra cost
@@ -891,7 +916,8 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
 
 function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const { width: W, height: H } = dimsFor(tt.orientation, tt.quality);
-  const p = getPalette(tt.themeId, tt.accent);
+  const hasImage = !!opts.bg;
+  const p = applyTextColor(getPalette(tt.themeId, tt.accent), tt.textColor, hasImage, !!opts.bgLight);
   const L = labels(tt.language, tt.labels);
   const logo = opts.logo ?? null;
 
@@ -918,7 +944,6 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const base = tt.layoutCarousel ? CAROUSEL[Math.floor((m.parts.hour * 60 + m.parts.minute) / 15) % 3] : tt.layout;
   const layout = portrait && base === 'split' ? 'centered' : base;
   const P = Math.round(Math.min(W, H) * 0.05);
-  const hasImage = !!opts.bg;
   const cel = celestialPos(m.times, nowHours, W, H, P);
 
   const out: string[] = [];

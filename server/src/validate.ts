@@ -153,6 +153,11 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
   const accent = /^#?[0-9a-fA-F]{6}$/.test(accentRaw)
     ? accentRaw.startsWith('#') ? accentRaw : `#${accentRaw}`
     : undefined;
+  // Text colour: '' = auto-contrast; otherwise a normalized #rrggbb. Falls back to base.
+  const tcRaw = (o.textColor === undefined ? base?.textColor ?? '' : str(o.textColor, '', 7)).trim();
+  const textColor = /^#?[0-9a-fA-F]{6}$/.test(tcRaw)
+    ? (tcRaw.startsWith('#') ? tcRaw : `#${tcRaw}`).toLowerCase()
+    : '';
   const jumuahIn = Array.isArray(o.jumuah) ? o.jumuah : base?.jumuah ?? ['13:30'];
   const jumuah = jumuahIn.slice(0, 8).map((x) => hhmmOrNull(x)).filter((x): x is string => x != null);
   return {
@@ -160,6 +165,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     name: str(o.name, base?.name ?? 'Timetable', 80) || 'Timetable',
     themeId: oneOf(o.themeId, THEME_IDS, base?.themeId ?? 'emerald'),
     accent,
+    textColor,
     orientation: oneOf(o.orientation, ['landscape', 'portrait'] as const, base?.orientation ?? 'landscape') as Orientation,
     quality: oneOf(o.quality, ['720p', '1080p'] as const, base?.quality ?? '720p') as Quality,
     layout: oneOf(o.layout, ['centered', 'clockTop', 'split'] as const, base?.layout ?? 'centered'),

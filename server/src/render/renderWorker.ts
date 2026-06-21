@@ -19,6 +19,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { renderDisplaySvg, activeAnnouncementImage } from './svg';
 import { backgroundDataUri, logoDataUri, announcementDataUri } from './background';
 import { fontOptions } from './fonts';
+import { getPalette } from './theme';
 import type { Timetable } from '../types';
 
 if (!parentPort) throw new Error('renderWorker must be run as a worker thread');
@@ -45,6 +46,51 @@ function assets(tt: Timetable, bgOverride?: string, logoOverride?: string): { bg
   };
 }
 
+// Cache the sampled luminance of each background photo so we only decode it once
+// per image (keyed by a cheap fingerprint of the data URI, which changes when the
+// photo does). Decoding a multi-MB photo every frame would defeat the worker.
+const lumCache = new Map<string, number>();
+function imageLuminance(uri: string): number {
+  const key = `${uri.length}:${uri.slice(0, 48)}`;
+  const hit = lumCache.get(key);
+  if (hit !== undefined) return hit;
+  let lum = 0.5;
+  try {
+    // Render the photo into a tiny raster and average its perceived luminance.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><image href="${uri}" x="0" y="0" width="20" height="20" preserveAspectRatio="none"/></svg>`;
+    const px = new Resvg(svg, { font: { loadSystemFonts: false } }).render().pixels;
+    let sum = 0, wt = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3] / 255;
+      sum += ((0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255) * a;
+      wt += a;
+    }
+    lum = wt > 0 ? sum / wt : 0.5;
+  } catch {
+    lum = 0.5;
+  }
+  if (lumCache.size > 64) lumCache.clear();
+  lumCache.set(key, lum);
+  return lum;
+}
+
+/** Auto-contrast: true when the (scrimmed) custom background photo is light enough
+ *  that the theme's light text would wash out, so the render should use dark text.
+ *  Only meaningful when the timetable's textColor is "auto". */
+function bgIsLight(tt: Timetable, bg: string | null): boolean {
+  if (!bg || tt.textColor) return false; // manual colour set, or no photo
+  const themeBgLum = (() => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(getPalette(tt.themeId, tt.accent).bg.trim());
+    if (!m) return 0.1;
+    const n = parseInt(m[1], 16);
+    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  })();
+  // The render lays a ~0.45-alpha theme-coloured scrim over the photo, so judge the
+  // blended result rather than the raw photo.
+  const blended = imageLuminance(bg) * 0.55 + themeBgLum * 0.45;
+  return blended > 0.58;
+}
+
 port.on('message', (msg: Req) => {
   const { id, kind, tt, nowMs } = msg;
   try {
@@ -58,7 +104,7 @@ port.on('message', (msg: Req) => {
     }
     if (kind === 'png') {
       const { bg, logo } = assets(tt, msg.bgFile, msg.logoFile);
-      const svg = renderDisplaySvg(tt, now, { bg, logo });
+      const svg = renderDisplaySvg(tt, now, { bg, logo, bgLight: bgIsLight(tt, bg) });
       const png = new Resvg(svg, {
         font: fontOptions(),
         fitTo: { mode: 'width', value: msg.width ?? 960 },
@@ -78,7 +124,7 @@ port.on('message', (msg: Req) => {
     const annFile = activeAnnouncementImage(tt, now);
     const announcement = annFile ? announcementDataUri(annFile) : null;
     // tickerBandOnly: paint just the strip — ffmpeg overlays the moving text smoothly.
-    const svg = renderDisplaySvg(tt, now, { bg, logo, announcement, tickerBandOnly: true });
+    const svg = renderDisplaySvg(tt, now, { bg, logo, announcement, tickerBandOnly: true, bgLight: bgIsLight(tt, bg) });
     const r = new Resvg(svg, { font: fontOptions() }).render();
     const px = r.pixels;
     const ab = new ArrayBuffer(px.byteLength);
