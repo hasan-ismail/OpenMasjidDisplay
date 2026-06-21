@@ -28,7 +28,8 @@ each screen shows:
   glow onto the glass; optionally rotate the layout through the day to gently avoid TV burn-in. Prefer exact
   times? **Upload a whole year of Iqamah times as a CSV** (with a ready-to-edit example you can download).
 - 📷 **Cameras** — bring in any IP/security camera or an imam camera and put it on a screen with one tap
-  (great for overflow rooms and the women's section).
+  (great for overflow rooms and the women's section). Works with both **RTSP** and secure **RTSPS** links,
+  including **UniFi** cameras (turn on RTSP in UniFi Protect and paste the link it shows).
 - 🖥️ **HDMI sources** — plug a laptop or a recording into an HDMI-to-network encoder and send it to the
   screens you choose.
 - 🗓️ **Schedules** — switch a screen to the imam camera for Jumu'ah, then back to the timetable afterwards,
@@ -79,7 +80,7 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.14.1
+    ref: v0.15.0
 ```
 
 ### No install-time settings

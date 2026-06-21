@@ -88,7 +88,10 @@ function transcodeArgs(url: string, d: Dims, target: string): string[] {
     '-hide_banner', '-loglevel', 'warning',
     // Defence-in-depth: even if a non-rtsp URL ever slipped past validation, ffmpeg
     // may only speak these protocols (no file:/http:/concat: local read or SSRF).
-    '-protocol_whitelist', 'rtp,rtcp,udp,tcp,rtsp,rtsps,tls,crypto',
+    // `srtp` is included so secure cameras (e.g. UniFi's rtsps://…?enableSrtp) work;
+    // `tls_verify 0` because local cameras almost always present a self-signed cert.
+    '-protocol_whitelist', 'rtp,rtcp,udp,tcp,rtsp,rtsps,srtp,tls,crypto',
+    '-tls_verify', '0',
     '-rtsp_transport', 'tcp', '-i', url,
     '-map', '0:v:0',
     '-vf', `scale=${d.width}:${d.height}:force_original_aspect_ratio=decrease,pad=${d.width}:${d.height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p,fps=15`,

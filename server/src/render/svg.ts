@@ -879,6 +879,93 @@ function announcementView(
   return out.join('');
 }
 
+/** "Spotlight" layout — a distinct third design that puts the focus on the NEXT
+ *  prayer. A slim top bar carries the brand and a corner live clock; a large hero
+ *  card counts down to the next prayer (with its Adhan/Iqamah times and a progress
+ *  bar from the previous prayer); and the full day's prayers sit in a ribbon along
+ *  the bottom. Reads very differently from "Centered" (big central clock + grid)
+ *  and "Split" (side list + giant countdown). */
+function spotlightView(
+  tt: Timetable, m: Model, clock: ClockText, hms: [number, number, number], greg: string, hij: string,
+  p: Palette, L: Record<string, string>, W: number, H: number, P: number, logo: string | null,
+  nowHours: number, portrait: boolean,
+): string {
+  const out: string[] = [];
+  const gap = Math.min(W, H) * 0.018;
+  const next = m.rows.find((r) => r.next) ?? m.rows[0];
+  const nextName = (L[next.label] ?? next.label).toString();
+
+  // ── Top bar: brand on the leading side, live clock + date on the trailing side ──
+  const barH = H * (portrait ? 0.12 : 0.15);
+  const barY = P;
+  let nameX = P;
+  if (tt.showLogo) {
+    const ms = barH * 0.62;
+    out.push(mark(P, barY + (barH - ms) / 2, ms, p.primary, logo));
+    nameX = P + ms + W * 0.012;
+  }
+  out.push(text(nameX, barY + barH * 0.62, tt.masjidName, { size: clamp(barH * 0.42, 20, 58), fill: p.text, family: FONT_DISPLAY, weight: 700, anchor: 'start', editId: 'masjidName' }));
+  const clockStr = clock.time + (clock.period ? ` ${clock.period}` : '');
+  let clkSize = clamp(barH * 0.52, 24, 72);
+  const cw = approxWidth(clockStr, clkSize);
+  if (cw > W * 0.42) clkSize *= (W * 0.42) / cw;
+  out.push(text(W - P, barY + barH * 0.46, clockStr, { size: clkSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'end', letter: -0.5 }));
+  if (tt.showDates) {
+    const dstr = hij ? `${hij}  ·  ${greg}` : greg;
+    out.push(text(W - P, barY + barH * 0.86, dstr, { size: clamp(barH * 0.22, 12, 26), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
+  }
+
+  // ── Hero card between the bar and the bottom ribbon ──
+  const footerH = H * 0.05;
+  const ribbonH = H * (portrait ? 0.34 : 0.22);
+  const ribbonY = H - P - footerH - ribbonH;
+  const heroTop = barY + barH + gap;
+  const heroH = ribbonY - gap - heroTop;
+  const heroX = P;
+  const heroW = W - 2 * P;
+  out.push(glass(heroX, heroTop, heroW, heroH, Math.min(heroW, heroH) * 0.05, { glow: p.primary }));
+  const cx = W / 2;
+
+  out.push(text(cx, heroTop + heroH * 0.17, (L.next ?? 'Next prayer').toUpperCase(), { size: clamp(heroH * 0.07, 12, 28), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 4 }));
+  out.push(text(cx, heroTop + heroH * 0.37, nextName.toUpperCase(), { size: clamp(heroH * 0.19, 28, 104), fill: p.goldSoft, family: FONT_DISPLAY, weight: 700, anchor: 'middle', letter: 1 }));
+
+  if (tt.showCountdown) {
+    let ns = clamp(heroH * 0.27, 30, 134);
+    const timeStr = `${pad2(hms[0])}:${pad2(hms[1])}:${pad2(hms[2])}`;
+    const sw = approxWidth(timeStr, ns);
+    if (sw > heroW * 0.72) ns *= (heroW * 0.72) / sw;
+    out.push(text(cx, heroTop + heroH * 0.55, `${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(heroH * 0.05, 10, 22), fill: p.textDim, weight: 700, anchor: 'middle', letter: 3 }));
+    out.push(text(cx, heroTop + heroH * 0.55 + ns * 0.52, timeStr, { size: ns, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
+  } else {
+    // No countdown → feature the next Iqamah (or Adhan) time big instead.
+    const big = fmtShort(next.iqamah ?? next.adhan, tt.timeFormat);
+    out.push(text(cx, heroTop + heroH * 0.55, ((next.iqamah != null ? L.iqamah : L.athan) ?? '').toUpperCase(), { size: clamp(heroH * 0.05, 10, 22), fill: p.textDim, weight: 700, anchor: 'middle', letter: 3 }));
+    out.push(text(cx, heroTop + heroH * 0.55 + clamp(heroH * 0.27, 30, 134) * 0.52, big, { size: clamp(heroH * 0.27, 30, 134), fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
+  }
+
+  // Adhan · Iqamah times line.
+  const aStr = `${L.athan ?? 'Adhan'} ${fmtShort(next.adhan, tt.timeFormat)}`;
+  const iStr = next.iqamah != null ? `${L.iqamah ?? 'Iqamah'} ${fmtShort(next.iqamah, tt.timeFormat)}` : '';
+  out.push(text(cx, heroTop + heroH * 0.85, iStr ? `${aStr}      ${iStr}` : aStr, { size: clamp(heroH * 0.075, 13, 30), fill: p.text, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5 }));
+
+  // Thin progress bar from the current prayer to the next (wraps correctly past midnight).
+  const activeRow = m.rows.find((r) => r.key === m.activeKey);
+  const prevH = activeRow?.adhan ?? m.nextHours - 1;
+  let now2 = nowHours;
+  if (now2 < prevH) now2 += 24;
+  const prog = clamp((now2 - prevH) / Math.max(0.001, m.nextHours - prevH), 0, 1);
+  const barW = heroW * 0.62;
+  const barX = cx - barW / 2;
+  const pby = heroTop + heroH * 0.93;
+  const pbt = Math.max(4, heroH * 0.018);
+  out.push(rect(barX, pby, barW, pbt, pbt / 2, hexToRgba(p.text, 0.14)));
+  if (prog > 0) out.push(rect(barX, pby, barW * prog, pbt, pbt / 2, p.primarySoft));
+
+  // ── Bottom ribbon: the whole day's prayers, compact, next/active highlighted ──
+  out.push(prayerGrid(m.rows, P, ribbonY, W - 2 * P, ribbonH, portrait ? 3 : m.rows.length, p, L, tt.timeFormat, gap));
+  return out.join('');
+}
+
 /** "Setup needed" frame when no location is configured. */
 function setupNeeded(p: Palette, W: number, H: number, masjidName: string): string {
   const cel: Celestial = { isDay: true, x: W * 0.5, y: H * 0.18 };
@@ -911,6 +998,7 @@ export interface RenderOpts {
   sink?: { hotspots: Hotspot[] };
 }
 
+// Burn-in rotation order: Centered → Spotlight (id 'clockTop') → Split.
 const CAROUSEL: TimetableLayout[] = ['centered', 'clockTop', 'split'];
 
 export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}): string {
@@ -986,8 +1074,11 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     out.push(announcementView(tt, m, clock, greg, hij, p, L, W, H, P, logo, opts.announcement));
   } else if (layout === 'split') {
     out.push(splitView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo));
+  } else if (layout === 'clockTop') {
+    // "Spotlight": its own top bar + next-prayer hero + bottom ribbon.
+    out.push(spotlightView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo, nowHours, portrait));
   } else {
-    // ── Masthead ──
+    // ── Centered: masthead + big central clock + prayer grid ──
     const mastH = H * (portrait ? 0.11 : 0.15);
     const mastY = P;
     const markSize = mastH * 0.62;
@@ -1016,20 +1107,11 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     const bodyBottom = H - P - footerH;
     const gap = Math.min(W, H) * 0.014;
 
-    if (layout === 'clockTop') {
-      const bandH = (bodyBottom - bodyTop) * 0.3;
-      out.push(glass(P, bodyTop, W - 2 * P, bandH, Math.min(W, bandH) * 0.05));
-      const clockSize = clamp(bandH * 0.5, 50, 170);
-      out.push(clockGroup(W / 2, bodyTop + bandH * (tt.showCountdown ? 0.36 : 0.46), clockSize, clock, tt.showCountdown, pillText, p));
-      const gridY = bodyTop + bandH + gap * 1.5;
-      out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, bodyBottom - gridY, portrait ? 2 : m.rows.length, p, L, tt.timeFormat, gap));
-    } else {
-      const gridH = (bodyBottom - bodyTop) * (portrait ? 0.5 : 0.42);
-      const gridY = bodyBottom - gridH;
-      const clockSize = clamp(Math.min(W * (portrait ? 0.2 : 0.15), (gridY - bodyTop) * 0.5), 60, 240);
-      out.push(clockGroup(W / 2, (bodyTop + gridY) / 2 - clockSize * 0.1, clockSize, clock, tt.showCountdown, pillText, p));
-      out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, gridH, portrait ? 2 : m.rows.length, p, L, tt.timeFormat, gap));
-    }
+    const gridH = (bodyBottom - bodyTop) * (portrait ? 0.5 : 0.42);
+    const gridY = bodyBottom - gridH;
+    const clockSize = clamp(Math.min(W * (portrait ? 0.2 : 0.15), (gridY - bodyTop) * 0.5), 60, 240);
+    out.push(clockGroup(W / 2, (bodyTop + gridY) / 2 - clockSize * 0.1, clockSize, clock, tt.showCountdown, pillText, p));
+    out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, gridH, portrait ? 2 : m.rows.length, p, L, tt.timeFormat, gap));
   }
 
   // ── Footer (hidden when the ticker is running — they share the bottom strip) ──

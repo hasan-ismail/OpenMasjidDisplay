@@ -12,7 +12,7 @@ interface Props {
 const METHODS = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Custom'] as const;
 const LAYOUTS: { id: TimetableLayout; label: string }[] = [
   { id: 'centered', label: 'Centered' },
-  { id: 'clockTop', label: 'Clock on top' },
+  { id: 'clockTop', label: 'Spotlight' },
   { id: 'split', label: 'Split' },
 ];
 
@@ -335,7 +335,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           </Field>
           <div className="toggle-row row-between" style={{ marginBlockEnd: '0.9rem' }}>
             <span className="label" style={{ margin: 0 }}>
-              Rotate layouts over the day <span className="hint">— cycles centered / clock-on-top / split every 15 min (prevents TV burn-in)</span>
+              Rotate layouts over the day <span className="hint">— cycles centered / spotlight / split every 15 min (prevents TV burn-in)</span>
             </span>
             <Toggle checked={f.layoutCarousel} onChange={(v) => set('layoutCarousel', v)} label="Rotate layouts over the day" />
           </div>

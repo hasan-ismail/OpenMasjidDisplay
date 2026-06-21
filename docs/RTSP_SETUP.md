@@ -29,10 +29,20 @@ mpv --rtsp-transport=tcp --fs --no-osc rtsp://192.168.1.50:8554/tv_a1b2c3
 
 ## Add a camera or HDMI source
 
-In **Sources**, add the device's RTSP URL, for example:
+In **Sources**, add the device's RTSP or secure RTSPS URL, for example:
 
-- Camera: `rtsp://user:pass@192.168.1.80:554/stream1`
+- Camera (RTSP): `rtsp://user:pass@192.168.1.80:554/stream1`
+- Camera (secure RTSPS): `rtsps://192.168.1.1:7441/abcd1234?enableSrtp`
 - HDMI encoder: `rtsp://192.168.1.81:554/hdmi`
+
+Both `rtsp://` and the secure `rtsps://` are supported.
+
+**UniFi cameras:** RTSP is off by default in UniFi Protect. Open the camera's
+settings → **RTSP**, enable a stream, and paste the link it shows (UniFi gives a
+secure `rtsps://…` link). If a secure link won't connect on **Direct** mode (some
+UniFi consoles present a self-signed certificate), switch the source to **Most
+compatible (re-encode)** — that path connects over TLS without certificate
+verification and also handles UniFi's `?enableSrtp` (SRTP) streams.
 
 Credentials in the URL are stored but never displayed in the panel.
 

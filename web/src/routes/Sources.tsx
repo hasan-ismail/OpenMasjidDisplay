@@ -46,7 +46,7 @@ export function Sources({ state, refetch }: Props) {
         <div className="empty-state glass" style={{ borderRadius: 'var(--radius-card)' }}>
           <div className="empty-art"><IconCamera size={56} /></div>
           <h3>No sources yet</h3>
-          <p>Add a security/imam camera or an HDMI encoder by its RTSP link.</p>
+          <p>Add a security/imam camera or an HDMI encoder by its RTSP or secure RTSPS link (UniFi cameras included).</p>
           <button className="btn btn--primary" style={{ marginTop: '1rem' }} onClick={() => setEdit('new')}><IconPlus size={16} /> Add a source</button>
         </div>
       ) : (
@@ -113,7 +113,7 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
 
   const save = async () => {
     if (!/^rtsps?:\/\//i.test(url.trim()) && !/^rtmps?:\/\//i.test(url.trim())) {
-      toast('Enter an RTSP link, e.g. rtsp://192.168.1.50:554/stream1', 'error');
+      toast('Enter a camera link starting with rtsp:// or rtsps:// (e.g. rtsp://192.168.1.50:554/stream1)', 'error');
       return;
     }
     setBusy(true);
@@ -151,8 +151,11 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
           </select>
         </Field>
       </div>
-      <Field label="RTSP link" hint="From your camera/encoder. Credentials in the link are kept private.">
-        <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="rtsp://user:pass@192.168.1.50:554/stream1" />
+      <Field label="Camera or stream link" hint="Works with both RTSP and secure RTSPS links. Any username/password in the link is kept private.">
+        <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="rtsp://user:pass@192.168.1.50:554/stream1  ·  or  rtsps://…" />
+        <p className="hint" style={{ marginBlockStart: '0.4rem', lineHeight: 1.5 }}>
+          <strong>UniFi cameras:</strong> in UniFi Protect open the camera’s settings, turn on <strong>RTSP</strong> (it’s off by default), and paste the link it shows — the secure <code>rtsps://…</code> one works too. If a secure link won’t connect, switch the option below to <em>Most compatible</em>.
+        </p>
       </Field>
       <div className="grid2">
         <Field label="Compatibility" hint="'Most compatible' re-encodes so it plays on more screens (more processor — best on a mini-PC).">
