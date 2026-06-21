@@ -1,0 +1,99 @@
+id: display
+name: OpenMasjid Display
+tagline: Run prayer timetables, cameras and HDMI on every screen in your masjid — over your network
+category: displays
+version: 0.1.0
+author: hasan-ismail
+license: AGPL-3.0
+icon: icon.svg
+screenshots:
+  - screenshots/1.svg
+  - screenshots/2.svg
+  - screenshots/3.svg
+description: |
+  **OpenMasjid Display** turns one small computer into the control room for every
+  screen in your masjid. Each TV gets its own network video link (RTSP) that you
+  point a cheap "RTSP decoder" box at once — then you decide, from your phone or a
+  computer, what each screen shows:
+
+  - **Prayer timetables** — beautiful, full-screen prayer clocks calculated on the
+    device (no internet needed). Make as many as you like, each with its own colours
+    so they match the room they hang in. Shows a large live clock, the Hijri and
+    Gregorian dates, every prayer's Adhan **and** Iqamah time, Jumu'ah, and a gentle
+    countdown to the next prayer with the current prayer highlighted.
+  - **Cameras** — bring in any security/IP camera or an imam camera and put it on a
+    screen with one tap (great for overflow rooms and the women's section).
+  - **HDMI sources** — plug a laptop or a recording into an HDMI-to-network encoder
+    and send it to the screens you choose.
+
+  Set it once and forget it: a weekly **schedule** can switch a screen to a camera
+  for Jumu'ah, then back to the timetable afterwards — automatically. Volunteers can
+  always take over instantly from the simple mobile page.
+
+  It is designed to be light enough for a Raspberry Pi, a mini-PC, or a Proxmox
+  container, and the whole control panel matches the calm OpenMasjidOS look in both
+  light and dark.
+
+  **After installing:** open the control panel, set this server's network address so
+  the screens know where to connect, then add your screens and point each decoder at
+  the link it shows you. Everything else — timetables, cameras, schedules — is set up
+  right inside the panel.
+settings:
+  - key: ADMIN_PASSWORD
+    label: Control-panel password (leave blank for none on a trusted network)
+    type: password
+    default: ""
+  - key: RTSP_PUBLIC_HOST
+    label: This server's network address (e.g. 192.168.1.50 — you can also set it later)
+    type: text
+    default: ""
+  - key: RTSP_PUBLIC_PORT
+    label: Video network port (default 8554; change only if that port is already used)
+    type: text
+    default: "8554"
+  - key: DISPLAY_QUALITY
+    label: Picture quality (720p is best for a Raspberry Pi; 1080p uses more power)
+    type: select
+    options: ["720p", "1080p"]
+    default: "720p"
+  - key: MASJID_NAME
+    label: Masjid name (for your first timetable)
+    type: text
+    default: Our Masjid
+  - key: LATITUDE
+    label: Latitude (e.g. 40.7128)
+    type: text
+    default: ""
+  - key: LONGITUDE
+    label: Longitude (e.g. -74.0060)
+    type: text
+    default: ""
+  - key: CALC_METHOD
+    label: Prayer calculation method
+    type: select
+    options: [MWL, ISNA, Egypt, Makkah, Karachi, Tehran, Jafari]
+    default: MWL
+  - key: ASR_MADHAB
+    label: Asr time (Standard = Shafi'i/Maliki/Hanbali, Hanafi = later)
+    type: select
+    options: [Standard, Hanafi]
+    default: Standard
+  - key: TIMEZONE
+    label: Time zone (e.g. America/New_York — leave blank to use the server's zone)
+    type: text
+    default: ""
+  - key: TIME_FORMAT
+    label: Clock format
+    type: select
+    options: [12h, 24h]
+    default: 12h
+  - key: LANGUAGE
+    label: Language for dates
+    type: select
+    options: [en, ar, ur]
+    default: en
+ports:
+  - container: 8080
+    label: Control panel
+  - container: 8554
+    label: RTSP video for the screens

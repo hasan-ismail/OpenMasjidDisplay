@@ -1,0 +1,170 @@
+/*
+ * Design tokens — mirrors the OpenMasjidOS palette so the control panel feels
+ * like part of the platform. Switching theme = data-theme="dark|light" on <html>.
+ * Fonts use the system stack (no external/CDN dependency).
+ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-surface: #030D1A;
+  --color-surface-raised: #0A1828;
+  --color-surface-overlay: #0F2040;
+  --color-surface-hover: rgba(34, 211, 238, 0.07);
+  --color-surface-shimmer: #0D2035;
+
+  --color-primary: #22D3EE;
+  --color-primary-hover: #67E8F9;
+  --color-primary-muted: #155E75;
+  --color-primary-subtle: rgba(34, 211, 238, 0.12);
+
+  --color-accent: #F59E0B;
+  --color-gold: #F59E0B;
+  --color-gold-subtle: rgba(245, 158, 11, 0.1);
+
+  --color-ink: #F4F7FB;
+  --color-ink-muted: #9FACC2;
+  --color-ink-faint: #5C6B83;
+
+  --color-border: rgba(148, 175, 210, 0.14);
+
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
+
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --radius-card: 1rem;
+  --radius-button: 0.625rem;
+
+  --glass-blur: 16px;
+  --glass-blur-inset: 9px;
+  --glass-blur-strong: 28px;
+  --glass-saturate: 165%;
+  --glass-saturate-strong: 200%;
+  --glass-bg: rgba(10, 24, 40, 0.55);
+  --glass-bg-raised: rgba(15, 32, 64, 0.68);
+  --glass-bg-inset: rgba(3, 13, 26, 0.45);
+  --glass-tint: rgba(34, 211, 238, 0.06);
+  --glass-highlight: rgba(186, 230, 253, 0.22);
+  --glass-border: rgba(125, 200, 232, 0.14);
+  --glass-glow: rgba(34, 211, 238, 0.10);
+  --glint: rgba(255, 255, 255, 0.10);
+  --glass-shadow:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 8px 28px -8px rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--glass-border);
+  --glass-shadow-raised:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 16px 48px -12px rgba(0, 0, 0, 0.7),
+    0 0 28px -6px var(--glass-glow),
+    0 0 0 1px var(--glass-border);
+
+  --glow-primary: 0 0 0 1px var(--color-primary-subtle), 0 12px 32px -8px rgba(34, 211, 238, 0.35);
+  --glow-strength: 0.40;
+
+  --color-btn: #22D3EE;
+  --color-btn-hover: #67E8F9;
+  --color-on-primary: #00131c;
+
+  --scene-base: #020912;
+  --scene-gradient: linear-gradient(150deg, #0c3a4d 0%, #082230 48%, #020a12 100%);
+  --aurora-cyan: rgba(34, 211, 238, 0.30);
+  --aurora-navy: rgba(15, 32, 64, 0.60);
+  --aurora-gold: rgba(245, 158, 11, 0.14);
+  --aurora-blur: 48px;
+  --scene-vignette: rgba(0, 0, 0, 0.45);
+  --pattern-opacity: 0.5;
+  --geometric-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%2322D3EE' stroke-width='0.5' opacity='0.15'%3E%3Cpolygon points='30,4 34.5,21 51,15 39,28 56,30 39,32 51,45 34.5,39 30,56 25.5,39 9,45 21,32 4,30 21,28 9,15 25.5,21'/%3E%3Crect x='19' y='19' width='22' height='22' transform='rotate(45 30 30)'/%3E%3Cline x1='0' y1='30' x2='60' y2='30'/%3E%3Cline x1='30' y1='0' x2='30' y2='60'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-surface: #F0F9FF;
+  --color-surface-raised: #FFFFFF;
+  --color-surface-overlay: #E0F2FE;
+  --color-surface-hover: rgba(2, 132, 199, 0.06);
+  --color-surface-shimmer: #BAE6FD;
+
+  --color-primary: #0284C7;
+  --color-primary-hover: #0369A1;
+  --color-primary-muted: #BAE6FD;
+  --color-primary-subtle: rgba(2, 132, 199, 0.1);
+
+  --color-accent: #D97706;
+  --color-gold: #D97706;
+  --color-gold-subtle: rgba(217, 119, 6, 0.08);
+
+  --color-ink: #0C4A6E;
+  --color-ink-muted: #475569;
+  --color-ink-faint: #94A3B8;
+
+  --color-border: rgba(2, 132, 199, 0.12);
+
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-danger: #DC2626;
+
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-raised: rgba(255, 255, 255, 0.72);
+  --glass-bg-inset: rgba(240, 249, 255, 0.60);
+  --glass-tint: rgba(2, 132, 199, 0.04);
+  --glass-highlight: rgba(255, 255, 255, 0.90);
+  --glass-border: rgba(2, 132, 199, 0.16);
+  --glass-glow: rgba(2, 132, 199, 0.08);
+  --glint: rgba(255, 255, 255, 0.32);
+  --glass-shadow:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 8px 28px -10px rgba(13, 38, 76, 0.18),
+    0 0 0 1px var(--glass-border);
+  --glass-shadow-raised:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 16px 48px -14px rgba(13, 38, 76, 0.22),
+    0 0 28px -8px var(--glass-glow),
+    0 0 0 1px var(--glass-border);
+
+  --glow-primary: 0 0 0 1px var(--color-primary-subtle), 0 12px 32px -8px rgba(2, 132, 199, 0.22);
+  --glow-strength: 0.22;
+
+  --color-btn: #0369A1;
+  --color-btn-hover: #075985;
+  --color-on-primary: #FFFFFF;
+
+  --scene-base: #EAF6FF;
+  --scene-gradient: linear-gradient(150deg, #dbeafe 0%, #eef6ff 50%, #f0f9ff 100%);
+  --aurora-cyan: rgba(2, 132, 199, 0.14);
+  --aurora-navy: rgba(186, 230, 253, 0.42);
+  --aurora-gold: rgba(217, 119, 6, 0.07);
+  --scene-vignette: rgba(2, 40, 70, 0.06);
+  --pattern-opacity: 0.4;
+  --geometric-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%230284C7' stroke-width='0.5' opacity='0.1'%3E%3Cpolygon points='30,4 34.5,21 51,15 39,28 56,30 39,32 51,45 34.5,39 30,56 25.5,39 9,45 21,32 4,30 21,28 9,15 25.5,21'/%3E%3Crect x='19' y='19' width='22' height='22' transform='rotate(45 30 30)'/%3E%3Cline x1='0' y1='30' x2='60' y2='30'/%3E%3Cline x1='30' y1='0' x2='30' y2='60'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --ease-settle: linear(0, 0.18, 0.45, 0.73, 0.92, 1.01, 1.02, 1);
+  --dur-micro: 140ms;
+  --dur-settle: 420ms;
+  --lift-y: -6px;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI", system-ui, ui-sans-serif, var(--font-sans);
+}
+
+*,
+*::before,
+*::after {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

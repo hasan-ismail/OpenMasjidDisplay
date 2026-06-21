@@ -1,0 +1,92 @@
+/* Glass material + ambient utilities (token-driven). Loaded after tokens. */
+
+.glass {
+  position: relative;
+  border-radius: var(--radius-card);
+  background-image: linear-gradient(var(--glass-tint), var(--glass-tint));
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-shadow);
+}
+.glass-raised {
+  position: relative;
+  border-radius: var(--radius-card);
+  background-image: linear-gradient(var(--glass-tint), var(--glass-tint));
+  background-color: var(--glass-bg-raised);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-shadow-raised);
+}
+.glass-inset {
+  position: relative;
+  border-radius: var(--radius-button);
+  background-color: var(--glass-bg-inset);
+  -webkit-backdrop-filter: blur(var(--glass-blur-inset)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-inset)) saturate(var(--glass-saturate));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--glass-border);
+}
+
+/* A glass pane inside a glass pane must not re-blur (perf). */
+.glass :where(.glass, .glass-raised),
+.glass-raised :where(.glass, .glass-raised) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Opaque fallback where backdrop-filter is unsupported. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background-color: var(--color-surface-raised); }
+  .glass-raised { background-color: var(--color-surface-overlay); }
+  .glass-inset { background-color: var(--color-surface); }
+}
+
+/* Refractive light edge. */
+.glass::after,
+.glass-raised::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.05) 32%, transparent 52%, rgba(255, 255, 255, 0.12));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0.6;
+}
+[data-theme="light"] .glass::after,
+[data-theme="light"] .glass-raised::after {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.3) 32%, transparent 52%, rgba(2, 132, 199, 0.12));
+}
+
+/* Live status dot — colour conveys state; glow pulses (unless reduced motion). */
+.status-dot {
+  position: relative;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--color-success);
+  flex-shrink: 0;
+}
+.status-dot--idle { background: var(--color-ink-faint); }
+.status-dot--warn { background: var(--color-warning); }
+.status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-success) 55%, transparent), transparent 70%);
+  animation: pulseGlow 2.4s ease-in-out infinite;
+}
+.status-dot--idle::after { content: none; }
+.status-dot--warn::after { background: radial-gradient(circle, color-mix(in srgb, var(--color-warning) 55%, transparent), transparent 70%); }
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.45; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-dot::after { animation: none; opacity: 0.8; transform: scale(1); }
+}

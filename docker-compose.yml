@@ -1,0 +1,59 @@
+# OpenMasjid Display — two small services that run side by side:
+#   • app       — the control panel (web UI + API) and the timetable video renderer
+#   • mediamtx   — the RTSP server every screen's decoder connects to
+# Both are least-privilege: no privileged mode, host networking, devices or sockets.
+services:
+  app:
+    image: ghcr.io/hasan-ismail/openmasjiddisplay:0.1.0
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    environment:
+      # Collected at install time (written to .env by OpenMasjidOS).
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      RTSP_PUBLIC_HOST: ${RTSP_PUBLIC_HOST}
+      RTSP_PUBLIC_PORT: ${RTSP_PUBLIC_PORT}
+      DISPLAY_QUALITY: ${DISPLAY_QUALITY}
+      MASJID_NAME: ${MASJID_NAME}
+      LATITUDE: ${LATITUDE}
+      LONGITUDE: ${LONGITUDE}
+      CALC_METHOD: ${CALC_METHOD}
+      ASR_MADHAB: ${ASR_MADHAB}
+      TIMEZONE: ${TIMEZONE}
+      TIME_FORMAT: ${TIME_FORMAT}
+      LANGUAGE: ${LANGUAGE}
+      # Internal wiring (how the app reaches the RTSP server on the private network).
+      PORT: "8080"
+      DATA_DIR: /data
+      MEDIAMTX_API_URL: http://mediamtx:9997
+      MEDIAMTX_RTSP_INTERNAL: rtsp://mediamtx:8554
+      MEDIAMTX_RTSP_LOOPBACK: rtsp://127.0.0.1:8554
+    ports:
+      # host:container — OpenMasjidOS offers "Open" on the lowest published port,
+      # so the control panel (8099) sits below the RTSP port (8554). The platform
+      # picks a different free host port automatically if one is taken.
+      - "8099:8080"
+    volumes:
+      - data:/data
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.19.1
+    restart: unless-stopped
+    environment:
+      # Control API (private network only — not published to the host).
+      MTX_API: "yes"
+      MTX_APIADDRESS: ":9997"
+      # Force RTSP-over-TCP: the most compatible, NAT/firewall-friendly transport
+      # for commodity TV decoder boxes (no UDP port range to publish).
+      MTX_RTSPTRANSPORTS: "tcp"
+      # Trim everything we don't use, to stay light on a Raspberry Pi.
+      MTX_RTMP: "no"
+      MTX_HLS: "no"
+      MTX_WEBRTC: "no"
+      MTX_SRT: "no"
+      MTX_LOGLEVEL: "info"
+    ports:
+      - "8554:8554"
+
+volumes:
+  data:
