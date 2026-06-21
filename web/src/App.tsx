@@ -20,7 +20,7 @@ import {
 declare const __APP_VERSION__: string;
 import type { AppState } from './types';
 import { Screens } from './routes/Screens';
-import { Timetables } from './routes/Timetables';
+import { Timetables, TimetableEditor } from './routes/Timetables';
 import { Sources } from './routes/Sources';
 import { Schedules } from './routes/Schedules';
 import { SettingsPage } from './routes/Settings';
@@ -43,12 +43,42 @@ export function App() {
   );
 }
 
+/** Full-page timetable editor, opened in its own browser tab via `?edit=<id>`. */
+function EditorPage({ id, state, refetch }: { id: string; state: AppState; refetch: () => Promise<void> }) {
+  const tt = state.timetables.find((t) => t.id === id) ?? null;
+  const close = () => {
+    window.close();
+    window.location.href = window.location.pathname; // fallback if the tab can't self-close
+  };
+  return (
+    <>
+      <Scene />
+      {tt ? (
+        <TimetableEditor state={state} tt={tt} fullPage onClose={close} onSaved={refetch} />
+      ) : (
+        <div className="editor-page">
+          <div className="editor-bar glass-raised">
+            <b className="editor-title">Timetable not found</b>
+            <span className="spacer" />
+            <button className="btn btn--primary" onClick={close}>Close</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function Root() {
   const { state, authed, hasPassword, ssoEnabled, loading, refetch, onAuthed } = useAppState();
   const [tab, setTab] = useState<Tab>('screens');
   const [setupInstead, setSetupInstead] = useState(false);
+  const editId = new URLSearchParams(window.location.search).get('edit');
 
-  if (authed) return state ? <Shell state={state} refetch={refetch} tab={tab} setTab={setTab} /> : <Splash />;
+  if (authed) {
+    if (!state) return <Splash />;
+    if (editId) return <EditorPage id={editId} state={state} refetch={refetch} />;
+    return <Shell state={state} refetch={refetch} tab={tab} setTab={setTab} />;
+  }
   if (loading) return <Splash />;
   // Not signed in. Standalone first run (or a chosen fallback) → create a password.
   if (!hasPassword && (setupInstead || !ssoEnabled)) return <Setup onDone={onAuthed} />;

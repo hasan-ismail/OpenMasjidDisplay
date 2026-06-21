@@ -66,6 +66,7 @@ function seededTimetable(): Timetable {
     showDates: true,
     showLogo: true,
     showSeconds: false,
+    showFooter: true,
     backgroundImage: '',
     logoImage: '',
     footerNote: '',
@@ -84,6 +85,7 @@ function migrateTimetable(t: Timetable): Timetable {
     showDates: t.showDates ?? true,
     showLogo: t.showLogo ?? true,
     showSeconds: t.showSeconds ?? false,
+    showFooter: t.showFooter ?? true,
     backgroundImage: t.backgroundImage ?? '',
     logoImage: t.logoImage ?? '',
     // Drop methods we no longer support (was Tehran/Jafari) → safe default.

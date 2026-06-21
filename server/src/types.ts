@@ -72,6 +72,8 @@ export interface Timetable {
   showLogo: boolean;
   /** show seconds on the big clock (HH:MM:SS) */
   showSeconds: boolean;
+  /** show the small footer line (custom note, or the calculation-method note) */
+  showFooter: boolean;
   /** filename of an uploaded custom background under /data/uploads ('' = themed scene) */
   backgroundImage: string;
   /** filename of an uploaded masjid logo under /data/uploads ('' = the built-in mark) */

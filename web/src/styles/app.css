@@ -303,7 +303,7 @@ h1, h2, h3, p { margin: 0; }
 .studio-canvas--portrait { aspect-ratio: 9 / 16; max-width: 300px; margin-inline: auto; }
 .studio-canvas__img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .studio-canvas__overlay { position: absolute; inset: 0; display: grid; place-items: center; }
-/* Expand-to-full-screen control + the full-screen overlay. */
+/* "Open editor in a new tab" control on the preview. */
 .canvas-expand {
   position: absolute; inset-block-start: 0.5rem; inset-inline-end: 0.5rem; z-index: 4;
   width: 1.95rem; height: 1.95rem; border-radius: 9px; border: 0; cursor: pointer;
@@ -312,14 +312,17 @@ h1, h2, h3, p { margin: 0; }
   transition: opacity var(--dur-micro) ease;
 }
 .canvas-expand:hover { opacity: 1; }
-.studio-full {
-  position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 2vmin;
-  background: rgba(0,0,0,0.78); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  animation: fade 0.18s ease both;
+
+/* ── Full-page editor (opened in its own tab via ?edit=<id>) ─────────────── */
+.editor-page { position: relative; z-index: 1; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.editor-bar {
+  position: sticky; inset-block-start: 0; z-index: 20;
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem;
+  border-radius: 0; border-block-end: 1px solid var(--color-border);
 }
-.studio-canvas--full { width: auto; height: 90vh; max-width: 96vw; }
-.studio-canvas--full.studio-canvas--portrait { width: auto; height: 92vh; max-width: 96vw; margin: 0; }
-@media (prefers-reduced-motion: reduce) { .studio-full { animation: none; } }
+.editor-title { font-family: var(--font-display); font-size: 1.1rem; letter-spacing: -0.01em; color: var(--color-ink); }
+.editor-body { flex: 1; width: 100%; max-width: 1200px; margin-inline: auto; padding: 1.4rem 1.1rem 3rem; }
+.editor-body .studio__preview { position: sticky; top: 4.5rem; }
 /* Click-to-edit hotspots over the live preview image. */
 .studio-canvas .hot {
   position: absolute; margin: 0; padding: 0; border: 0; background: transparent;

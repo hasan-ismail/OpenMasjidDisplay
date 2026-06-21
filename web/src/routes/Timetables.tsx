@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot } from '../types';
-import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconClock, IconExpand, IconShrink, useToast } from '../ui';
+import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconClock, IconExpand, useToast } from '../ui';
 
 interface Props {
   state: AppState;
@@ -73,7 +73,7 @@ export function Timetables({ state, refetch }: Props) {
       </div>
 
       {edit && (
-        <TimetableModal
+        <TimetableEditor
           state={state}
           tt={edit === 'new' ? null : edit}
           onClose={() => setEdit(null)}
@@ -116,7 +116,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     method: 'MWL', asrMadhab: 'Standard', timezone: state.settings.scheduleTimezone ?? '',
     timeFormat: '12h', language: 'en',
     iqamah: { fajr: { mode: 'offset', offset: 20 }, dhuhr: { mode: 'offset', offset: 10 }, asr: { mode: 'offset', offset: 10 }, maghrib: { mode: 'offset', offset: 5 }, isha: { mode: 'offset', offset: 10 } },
-    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false,
+    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true,
     backgroundImage: '', logoImage: '', footerNote: '', createdAt: '',
   };
 }
@@ -130,11 +130,12 @@ function formBody(f: Form): Partial<Timetable> {
   } as Partial<Timetable>;
 }
 
-function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: Timetable | null; onClose: () => void; onSaved: () => void }) {
+export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { state: AppState; tt: Timetable | null; onClose: () => void; onSaved: () => void; fullPage?: boolean }) {
   const toast = useToast();
   const [f, setF] = useState<Form>(() => toForm(tt, state));
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }));
+  const popout = tt && !fullPage ? () => window.open(`${window.location.pathname}?edit=${tt.id}`, '_blank') : undefined;
 
   const themePrimary = state.themes.find((t) => t.id === f.themeId)?.palette.primary ?? '#22D3EE';
 
@@ -248,23 +249,10 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
     }
   };
 
-  return (
-    <Modal
-      open
-      wide
-      windowed
-      onClose={onClose}
-      title={tt ? 'Design timetable' : 'New timetable'}
-      footer={
-        <>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn--primary" onClick={save} disabled={busy}>{tt ? 'Save' : 'Create'}</button>
-        </>
-      }
-    >
+  const content = (
       <div className="studio">
         <div className="studio__preview">
-          <LivePreview body={formBody(f)} portrait={f.orientation === 'portrait'} onEditCommit={editLabel} />
+          <LivePreview body={formBody(f)} portrait={f.orientation === 'portrait'} onEditCommit={editLabel} onPopout={popout} />
           <p className="hint" style={{ textAlign: 'center', marginBlockStart: '0.5rem' }}>
             <IconClock size={12} /> Live preview — click a name, the masjid title or the footer to rename it.
           </p>
@@ -399,6 +387,7 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
             <ToggleRow label="Countdown to next prayer" checked={f.showCountdown} onChange={(v) => set('showCountdown', v)} />
             <ToggleRow label="Seconds on the clock" checked={f.showSeconds} onChange={(v) => set('showSeconds', v)} />
             <ToggleRow label="Sunrise" checked={f.showSunrise} onChange={(v) => set('showSunrise', v)} />
+            <ToggleRow label="Calculation-method footnote" checked={f.showFooter} onChange={(v) => set('showFooter', v)} />
           </div>
 
           <div style={{ marginBlockStart: '0.9rem' }}>
@@ -451,33 +440,49 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
           )}
         </div>
       </div>
+  );
+
+  if (fullPage) {
+    return (
+      <div className="editor-page">
+        <div className="editor-bar glass-raised">
+          <b className="editor-title">{tt ? 'Design timetable' : 'New timetable'}</b>
+          <span className="spacer" />
+          <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn btn--primary" onClick={save} disabled={busy}>{tt ? 'Save changes' : 'Create'}</button>
+        </div>
+        <div className="editor-body">{content}</div>
+      </div>
+    );
+  }
+
+  return (
+    <Modal
+      open
+      wide
+      windowed
+      onClose={onClose}
+      title={tt ? 'Design timetable' : 'New timetable'}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          {popout && <button type="button" className="btn btn--ghost" onClick={popout}>Open in new tab</button>}
+          <button className="btn btn--primary" onClick={save} disabled={busy}>{tt ? 'Save' : 'Create'}</button>
+        </>
+      }
+    >
+      {content}
     </Modal>
   );
 }
 
-function LivePreview({ body, portrait, onEditCommit }: { body: Partial<Timetable>; portrait: boolean; onEditCommit: (id: string, value: string) => void }) {
+function LivePreview({ body, portrait, onEditCommit, onPopout }: { body: Partial<Timetable>; portrait: boolean; onEditCommit: (id: string, value: string) => void; onPopout?: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [err, setErr] = useState(false);
   const [spots, setSpots] = useState<Hotspot[]>([]);
   const [active, setActive] = useState<{ id: string; value: string } | null>(null);
-  const [full, setFull] = useState(false);
   const urlRef = useRef<string | null>(null);
   const key = JSON.stringify(body);
-
-  // While full-screen, swallow Escape (exit full) before the modal sees it — unless
-  // an inline edit is open, in which case let the input cancel itself first.
-  useEffect(() => {
-    if (!full) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !active) {
-        e.stopPropagation();
-        e.preventDefault();
-        setFull(false);
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [full, active]);
 
   useEffect(() => {
     let alive = true;
@@ -517,8 +522,8 @@ function LivePreview({ body, portrait, onEditCommit }: { body: Partial<Timetable
   };
   const activeSpot = active ? spots.find((s) => s.id === active.id) : null;
 
-  const canvas = (
-    <div className={`studio-canvas${portrait ? ' studio-canvas--portrait' : ''}${full ? ' studio-canvas--full' : ''}`}>
+  return (
+    <div className={`studio-canvas${portrait ? ' studio-canvas--portrait' : ''}`}>
       {url && <img src={url} alt="Live preview of the timetable" className="studio-canvas__img" />}
       {!url && !err && <div className="studio-canvas__overlay"><Spinner /></div>}
       {err && <div className="studio-canvas__overlay"><span className="muted">Preview unavailable.</span></div>}
@@ -549,26 +554,19 @@ function LivePreview({ body, portrait, onEditCommit }: { body: Partial<Timetable
           }}
         />
       )}
-      <button
-        type="button"
-        className="canvas-expand"
-        onClick={() => setFull((v) => !v)}
-        title={full ? 'Exit full screen' : 'Full screen'}
-        aria-label={full ? 'Exit full screen' : 'Full screen'}
-      >
-        {full ? <IconShrink size={16} /> : <IconExpand size={16} />}
-      </button>
+      {onPopout && (
+        <button
+          type="button"
+          className="canvas-expand"
+          onClick={onPopout}
+          title="Open the editor in a new tab"
+          aria-label="Open the editor in a new tab"
+        >
+          <IconExpand size={16} />
+        </button>
+      )}
     </div>
   );
-
-  if (full) {
-    return (
-      <div className="studio-full" onClick={(e) => { if (e.target === e.currentTarget) setFull(false); }}>
-        {canvas}
-      </div>
-    );
-  }
-  return canvas;
 }
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {

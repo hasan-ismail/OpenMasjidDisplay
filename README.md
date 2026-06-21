@@ -76,7 +76,7 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.7.1
+    ref: v0.7.2
 ```
 
 ### No install-time settings

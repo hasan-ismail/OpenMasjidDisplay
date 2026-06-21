@@ -645,13 +645,25 @@ function splitView(
     out.push(text(leftX + pad, cy + leftW * 0.08, tt.masjidName, { size: clamp(leftW * 0.085, 14, 32), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start', editId: 'masjidName' }));
     cy += leftW * 0.13;
   }
-  const clockSize = clamp(leftW * 0.2, 34, 96);
-  out.push(text(leftX + pad, cy + clockSize * 0.8, clock.time + (clock.period ? ` ${clock.period}` : ''), { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'start', letter: -0.5 }));
+  // Clock on its own line, fit to the panel width (so a seconds clock can't run
+  // into the dates), then the dates stacked below it.
+  const clockStr = clock.time + (clock.period ? ` ${clock.period}` : '');
+  const maxW = leftW - 2 * pad;
+  let clockSize = clamp(leftW * 0.2, 30, 92);
+  const cw = approxWidth(clockStr, clockSize);
+  if (cw > maxW) clockSize = Math.max(22, clockSize * (maxW / cw));
+  out.push(text(leftX + pad, cy + clockSize * 0.82, clockStr, { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'start', letter: -0.5 }));
+  cy += clockSize * 1.06;
   if (tt.showDates) {
-    out.push(text(leftX + leftW - pad, cy + clockSize * 0.34, hij, { size: clamp(leftW * 0.05, 11, 22), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
-    out.push(text(leftX + leftW - pad, cy + clockSize * 0.7, greg, { size: clamp(leftW * 0.038, 9, 17), fill: p.textDim, anchor: 'end' }));
+    let dateSize = clamp(leftW * 0.045, 11, 20);
+    const dstr = hij ? `${hij}  ·  ${greg}` : greg;
+    const dw = approxWidth(dstr, dateSize);
+    if (dw > maxW) dateSize = Math.max(9, dateSize * (maxW / dw));
+    out.push(text(leftX + pad, cy + dateSize, dstr, { size: dateSize, fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'start' }));
+    cy += dateSize * 1.7;
+  } else {
+    cy += pad * 0.4;
   }
-  cy += clockSize + pad * 0.8;
 
   // List header + rows.
   const colAdhan = leftX + leftW * 0.66;
@@ -744,9 +756,10 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
   const remMin = (m.nextHours - nowHours) * 60;
   const hms: [number, number, number] = [Math.floor(remMin / 60), Math.floor(remMin % 60), Math.floor((remMin * 60) % 60)];
-  const countdown = hms[0] > 0 ? `${hms[0]}h ${pad2(hms[1])}m` : `${hms[1]}m ${pad2(hms[2])}s`;
+  // A live ticking "time until next prayer" counter (H:MM:SS), like the split hero.
+  const counter = hms[0] > 0 ? `${hms[0]}:${pad2(hms[1])}:${pad2(hms[2])}` : `${hms[1]}:${pad2(hms[2])}`;
   const nextLabel = L[m.rows.find((r) => r.next)?.label ?? 'fajr'] ?? '';
-  const pillText = `${L.next.toUpperCase()} · ${nextLabel} · ${countdown}`;
+  const pillText = `${nextLabel.toUpperCase()} ${(L.athan ?? 'Adhan').toUpperCase()} IN   ${counter}`;
 
   const greg = gregorian(m.parts, tt.language, tt.timezone);
   const hij = hijri(m.parts, tt.language);
@@ -822,8 +835,10 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   }
 
   // ── Footer ─────────────────────────────────────────────────────────────────
-  const methodNote = `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
-  out.push(text(W / 2, H - P * 0.5, tt.footerNote || methodNote, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5, editId: 'footerNote' }));
+  if (tt.showFooter) {
+    const methodNote = `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
+    out.push(text(W / 2, H - P * 0.5, tt.footerNote || methodNote, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5, editId: 'footerNote' }));
+  }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }

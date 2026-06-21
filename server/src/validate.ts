@@ -138,6 +138,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     showDates: o.showDates === undefined ? base?.showDates ?? true : bool(o.showDates, true),
     showLogo: o.showLogo === undefined ? base?.showLogo ?? true : bool(o.showLogo, true),
     showSeconds: o.showSeconds === undefined ? base?.showSeconds ?? false : bool(o.showSeconds, false),
+    showFooter: o.showFooter === undefined ? base?.showFooter ?? true : bool(o.showFooter, true),
     // backgroundImage + logoImage are managed only by the upload/delete endpoints, never trusted from the form body.
     backgroundImage: base?.backgroundImage ?? '',
     logoImage: base?.logoImage ?? '',
