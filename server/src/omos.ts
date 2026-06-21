@@ -27,7 +27,11 @@ function omosCookie(req: IncomingMessage): string | null {
   const raw = req.headers.cookie;
   if (!raw) return null;
   const m = /(?:^|;\s*)omos_session=([^;]+)/.exec(raw);
-  return m ? m[1] : null;
+  if (!m) return null;
+  const token = m[1].trim();
+  // Only forward a token that looks like a cookie value, so nothing odd can be
+  // injected into the outbound Cookie header we send to the platform.
+  return /^[A-Za-z0-9._~%+/=-]{1,4096}$/.test(token) ? token : null;
 }
 
 interface CacheEntry {
@@ -60,12 +64,13 @@ export async function platformUser(req: IncomingMessage): Promise<string | null>
     const res = await fetch(`${config.omosBaseUrl}/api/auth/session`, {
       headers: { cookie: `omos_session=${token}` },
       signal: ctrl.signal,
+      redirect: 'error', // don't follow a redirect to some other (internal) host
     });
     clearTimeout(t);
     if (!res.ok) return null;
-    const j = (await res.json()) as { authenticated?: boolean; username?: string };
-    if (j.authenticated) {
-      const username = String(j.username ?? 'OpenMasjidOS');
+    const j = (await res.json()) as { authenticated?: boolean; username?: unknown };
+    if (j.authenticated === true) {
+      const username = (typeof j.username === 'string' ? j.username : '').trim().slice(0, 64) || 'OpenMasjidOS';
       positiveCache.set(token, { username, expires: nowMs() + CACHE_MS });
       // Keep the cache from growing without bound on a busy panel.
       if (positiveCache.size > 256) {

@@ -16,6 +16,7 @@ import {
   clearCookieHeader,
 } from './auth';
 import { platformUser, ssoConfigured } from './omos';
+import { LoginLimiter } from './rateLimit';
 import { THEMES } from './render/theme';
 import {
   saveBackground,
@@ -91,9 +92,11 @@ function readBody(req: IncomingMessage, maxBytes = 1_000_000): Promise<Record<st
 
 function serveStatic(res: ServerResponse, pathname: string): boolean {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
-  const full = path.join(config.publicDir, rel);
-  // Prevent path traversal outside the public dir.
-  if (!full.startsWith(path.resolve(config.publicDir))) return false;
+  const full = path.resolve(config.publicDir, rel);
+  // Prevent path traversal outside the public dir (anchor with a trailing separator
+  // so a sibling dir sharing the prefix can't slip through).
+  const root = path.resolve(config.publicDir);
+  if (full !== root && !full.startsWith(root + path.sep)) return false;
   if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
   const ext = path.extname(full).toLowerCase();
   res.writeHead(200, {
@@ -145,8 +148,23 @@ function statePayload(store: Store, orchestrator: Orchestrator) {
   };
 }
 
+// SSO-minted admin sessions are short-lived (re-validated against the platform on
+// expiry) so a platform logout/deprovision isn't shadowed by a 30-day local cookie.
+const SSO_SESSION_MS = 60 * 60 * 1000;
+// Each timetable/source = a worker thread + an ffmpeg process; cap the collections
+// so a runaway (or a malicious SSO-minted admin) can't fan out unbounded pipelines.
+const MAX_PER_COLLECTION = 40;
+const atCap = (res: ServerResponse, arr: unknown[]): boolean => {
+  if (arr.length >= MAX_PER_COLLECTION) {
+    sendJson(res, 400, { error: `You can have at most ${MAX_PER_COLLECTION} of these.` });
+    return true;
+  }
+  return false;
+};
+
 export function createApi(deps: Deps) {
   const { store, orchestrator } = deps;
+  const loginLimiter = new LoginLimiter();
   // A request is authenticated if it carries a valid local session cookie. That
   // cookie is minted by first-run setup, by password login, or by confirmed
   // OpenMasjidOS SSO (see /api/session) — so every other endpoint stays a simple,
@@ -172,7 +190,7 @@ export function createApi(deps: Deps) {
         if (!isAuthed && ssoConfigured()) {
           const user = await platformUser(req);
           if (user) {
-            res.setHeader('set-cookie', setCookieHeader(makeToken(store.secret)));
+            res.setHeader('set-cookie', setCookieHeader(makeToken(store.secret, SSO_SESSION_MS), SSO_SESSION_MS));
             isAuthed = true;
             username = user;
           }
@@ -188,9 +206,12 @@ export function createApi(deps: Deps) {
       }
       if (pathname === '/api/setup' && method === 'POST') {
         const body = await readBody(req);
+        // Under OpenMasjidOS, sign-in is the dashboard's job (SSO) — there is no local
+        // admin password to claim, so refuse setup to close the open pre-setup window.
+        if (ssoConfigured()) return sendJson(res, 403, { error: 'This panel signs in through OpenMasjidOS.' });
         if (store.db.admin) return sendJson(res, 409, { error: 'The control panel is already set up.' });
         const pw = String(body.password ?? '');
-        if (pw.length < 4) return sendJson(res, 400, { error: 'Please choose a password of at least 4 characters.' });
+        if (pw.length < 8) return sendJson(res, 400, { error: 'Please choose a password of at least 8 characters.' });
         const { hash, salt } = hashPassword(pw);
         const name = String(body.name ?? '').slice(0, 80).trim();
         store.update((db) => {
@@ -200,12 +221,16 @@ export function createApi(deps: Deps) {
         return sendJson(res, 200, { ok: true });
       }
       if (pathname === '/api/login' && method === 'POST') {
+        const wait = loginLimiter.retryAfterMs(req);
+        if (wait > 0) return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(wait / 1000)}s.` });
         const body = await readBody(req);
         if (!store.db.admin) return sendJson(res, 400, { error: 'This panel has not been set up yet.' });
         if (verifyPassword(String(body.password ?? ''), store.db.admin)) {
+          loginLimiter.succeed(req);
           res.setHeader('set-cookie', setCookieHeader(makeToken(store.secret)));
           return sendJson(res, 200, { ok: true });
         }
+        loginLimiter.fail(req);
         return sendJson(res, 401, { error: 'Incorrect password.' });
       }
       if (pathname === '/api/logout' && method === 'POST') {
@@ -257,6 +282,7 @@ export function createApi(deps: Deps) {
 
       // ---- Timetables ------------------------------------------------------
       if (pathname === '/api/timetables' && method === 'POST') {
+        if (atCap(res, store.db.timetables)) return;
         const body = await readBody(req);
         const tt = normTimetable(body);
         store.update((db) => void db.timetables.push(tt));
@@ -441,7 +467,8 @@ export function createApi(deps: Deps) {
           fs.createReadStream(f.path).pipe(res);
           return;
         }
-        removeAnnouncement(file);
+        // Only delete a file that actually belongs to THIS timetable (same guard as GET).
+        if (file.startsWith(`${id}.ann.`)) removeAnnouncement(file);
         store.update((db) => {
           const a = db.timetables[idx].announcements;
           if (a) a.images = a.images.filter((f) => f !== file);
@@ -451,6 +478,7 @@ export function createApi(deps: Deps) {
 
       // ---- Sources ---------------------------------------------------------
       if (pathname === '/api/sources' && method === 'POST') {
+        if (atCap(res, store.db.sources)) return;
         const body = await readBody(req);
         const src = normSource(body);
         store.update((db) => void db.sources.push(src));
@@ -475,6 +503,7 @@ export function createApi(deps: Deps) {
 
       // ---- Screens (TVs) ---------------------------------------------------
       if (pathname === '/api/tvs' && method === 'POST') {
+        if (atCap(res, store.db.tvs)) return;
         const body = await readBody(req);
         const tv = normTv(body);
         store.update((db) => void db.tvs.push(tv));
@@ -503,9 +532,11 @@ export function createApi(deps: Deps) {
         const idx = store.db.tvs.findIndex((t) => t.id === id);
         if (idx < 0) return sendJson(res, 404, { error: 'Screen not found.' });
         const content = normContent(body.content);
-        const until = body.until == null ? null : Number(body.until);
+        const untilRaw = body.until == null ? null : Number(body.until);
+        // Clamp to a sane future window (now .. +30 days); past/garbage → no expiry.
+        const until = untilRaw != null && Number.isFinite(untilRaw) && untilRaw > Date.now() ? Math.min(untilRaw, Date.now() + 30 * 86400000) : null;
         store.update((db) => {
-          db.tvs[idx].override = { content, until: Number.isFinite(until) ? until : null };
+          db.tvs[idx].override = { content, until };
         });
         return sendJson(res, 200, store.db.tvs[idx]);
       }
@@ -520,6 +551,7 @@ export function createApi(deps: Deps) {
 
       // ---- Schedules -------------------------------------------------------
       if (pathname === '/api/schedules' && method === 'POST') {
+        if (atCap(res, store.db.schedules)) return;
         const body = await readBody(req);
         const rule = normSchedule(body);
         store.update((db) => void db.schedules.push(rule));

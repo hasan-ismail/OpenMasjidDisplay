@@ -154,7 +154,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     ? accentRaw.startsWith('#') ? accentRaw : `#${accentRaw}`
     : undefined;
   const jumuahIn = Array.isArray(o.jumuah) ? o.jumuah : base?.jumuah ?? ['13:30'];
-  const jumuah = jumuahIn.map((x) => hhmmOrNull(x)).filter((x): x is string => x != null);
+  const jumuah = jumuahIn.slice(0, 8).map((x) => hhmmOrNull(x)).filter((x): x is string => x != null);
   return {
     id: base?.id ?? rid('tt'),
     name: str(o.name, base?.name ?? 'Timetable', 80) || 'Timetable',
@@ -197,9 +197,22 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
   };
 }
 
+/** Only stream protocols are allowed for a source URL — blocks ffmpeg/MediaMTX
+ *  abuse like file:// (read local files onto a screen) or http:// SSRF. */
+const ALLOWED_SOURCE_SCHEMES = ['rtsp:', 'rtsps:', 'rtmp:', 'rtmps:'];
+function safeSourceUrl(raw: string): string {
+  const u = raw.trim();
+  if (!u) return '';
+  try {
+    return ALLOWED_SOURCE_SCHEMES.includes(new URL(u).protocol) ? u : '';
+  } catch {
+    return '';
+  }
+}
+
 export function normSource(input: unknown, base?: Source): Source {
   const o = asObj(input);
-  const url = str(o.url, base?.url ?? '', 1000).trim();
+  const url = safeSourceUrl(str(o.url, base?.url ?? '', 1000));
   return {
     id: base?.id ?? rid('src'),
     name: str(o.name, base?.name ?? 'Source', 80) || 'Source',
@@ -227,7 +240,7 @@ export function normTv(input: unknown, base?: Tv): Tv {
 export function normSchedule(input: unknown, base?: ScheduleRule): ScheduleRule {
   const o = asObj(input);
   const targetsIn = Array.isArray(o.targets) ? o.targets : base?.targets ?? ['*'];
-  const targets = targetsIn.map((x) => str(x, '', 80)).filter(Boolean);
+  const targets = targetsIn.slice(0, 200).map((x) => str(x, '', 80)).filter(Boolean);
   const daysIn = Array.isArray(o.days) ? o.days : base?.days ?? [];
   const days = [...new Set(daysIn.map((d) => intIn(d, -1, 0, 6)).filter((d) => d >= 0))];
   return {

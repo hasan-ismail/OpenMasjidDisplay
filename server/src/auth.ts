@@ -29,12 +29,17 @@ function hmac(secret: Buffer, payload: string): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
-export function makeToken(secret: Buffer, maxAgeMs = MAX_AGE_MS): string {
-  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + maxAgeMs })).toString('base64url');
+type Audience = 'admin' | 'vol';
+
+export function makeToken(secret: Buffer, maxAgeMs = MAX_AGE_MS, aud: Audience = 'admin'): string {
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + maxAgeMs, aud })).toString('base64url');
   return `${payload}.${hmac(secret, payload)}`;
 }
 
-function verifyToken(secret: Buffer, token: string): boolean {
+/** Verify signature, expiry AND audience. The audience binding is what stops a
+ *  volunteer token (aud:'vol') from being replayed as an admin cookie (aud:'admin') —
+ *  the cookie *name* is not a security boundary on its own. */
+function verifyToken(secret: Buffer, token: string, aud: Audience): boolean {
   const dot = token.lastIndexOf('.');
   if (dot < 0) return false;
   const payload = token.slice(0, dot);
@@ -44,8 +49,8 @@ function verifyToken(secret: Buffer, token: string): boolean {
   const b = Buffer.from(expected);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
   try {
-    const obj = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { exp?: number };
-    return typeof obj.exp === 'number' && obj.exp > Date.now();
+    const obj = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { exp?: number; aud?: string };
+    return typeof obj.exp === 'number' && obj.exp > Date.now() && obj.aud === aud;
   } catch {
     return false;
   }
@@ -66,25 +71,25 @@ function parseCookies(header?: string): Record<string, string> {
  *  admin account exists — before setup, nobody is authed.) */
 export function hasValidSession(req: IncomingMessage, secret: Buffer): boolean {
   const token = parseCookies(req.headers.cookie)[COOKIE];
-  return !!token && verifyToken(secret, token);
+  return !!token && verifyToken(secret, token, 'admin');
 }
 
-export function setCookieHeader(token: string): string {
-  return `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(MAX_AGE_MS / 1000)}`;
+export function setCookieHeader(token: string, maxAgeMs = MAX_AGE_MS): string {
+  return `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(maxAgeMs / 1000)}`;
 }
 
 export function clearCookieHeader(): string {
   return `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
-// ── Volunteer session (separate cookie + scope from the admin) ────────────────
+// ── Volunteer session (separate cookie + audience from the admin) ─────────────
 export function makeVolunteerToken(secret: Buffer): string {
-  return makeToken(secret, VOL_MAX_AGE_MS);
+  return makeToken(secret, VOL_MAX_AGE_MS, 'vol');
 }
 
 export function hasValidVolunteerSession(req: IncomingMessage, secret: Buffer): boolean {
   const token = parseCookies(req.headers.cookie)[VOL_COOKIE];
-  return !!token && verifyToken(secret, token);
+  return !!token && verifyToken(secret, token, 'vol');
 }
 
 export function setVolunteerCookieHeader(token: string): string {

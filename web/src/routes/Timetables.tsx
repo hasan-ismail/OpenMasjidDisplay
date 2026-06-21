@@ -150,6 +150,9 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
       toast(tt ? 'Timetable saved.' : 'Timetable created.');
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not save.', 'error');
+    } finally {
+      // Always clear busy — in the full-page editor there's no unmount to rely on,
+      // so the Save button would otherwise stay disabled after the first save.
       setBusy(false);
     }
   };

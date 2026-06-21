@@ -352,16 +352,21 @@ function buildModel(tt: Timetable, now: Date): Model {
   const tomorrowFajr = prayerTimes(tParts, tt.latitude!, tt.longitude!, tOff, method, tt.asrMadhab).fajr;
 
   const nowHours = parts.hour + parts.minute / 60 + parts.second / 3600;
+  const isFriday = dayOfWeek(now, tz) === 5;
+  const jFriday = isFriday ? tt.jumuah.map(parseHHMM).filter((x): x is number => x != null) : [];
   const order = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
+  // On Friday the Dhuhr slot is Jumu'ah, so "active"/"next prayer" + the countdown
+  // should track the Jumu'ah time rather than astronomical Dhuhr.
+  const eff: Record<string, number> = { ...(times as unknown as Record<string, number>) };
+  if (isFriday && jFriday[0] != null) eff.dhuhr = jFriday[0];
   let activeKey: string | null = null;
   let nextKey: string | null = null;
   let nextHours = 0;
-  const tv = times as unknown as Record<string, number>;
-  for (const k of order) if (tv[k] <= nowHours) activeKey = k;
+  for (const k of order) if (eff[k] <= nowHours) activeKey = k;
   for (const k of order) {
-    if (tv[k] > nowHours) {
+    if (eff[k] > nowHours) {
       nextKey = k;
-      nextHours = tv[k];
+      nextHours = eff[k];
       break;
     }
   }
@@ -371,8 +376,6 @@ function buildModel(tt: Timetable, now: Date): Model {
     activeKey = 'isha';
   }
   if (!activeKey) activeKey = 'isha';
-
-  const isFriday = dayOfWeek(now, tz) === 5;
 
   // A CSV-imported per-day override (keyed by month-day) wins over the rule.
   const dayKey = `${pad2(parts.month)}-${pad2(parts.day)}`;
@@ -387,7 +390,7 @@ function buildModel(tt: Timetable, now: Date): Model {
   rows.push({ key: 'fajr', label: 'fajr', adhan: times.fajr, iqamah: iq('fajr', times.fajr) });
   if (tt.showSunrise) rows.push({ key: 'sunrise', label: 'sunrise', adhan: times.sunrise, iqamah: null, minor: true });
   if (isFriday) {
-    const j = tt.jumuah.map(parseHHMM).filter((x): x is number => x != null);
+    const j = jFriday;
     const jIq = yearRow?.jumuah ? parseHHMM(yearRow.jumuah) : null;
     rows.push({ key: 'dhuhr', label: 'jumuah', adhan: j[0] ?? times.dhuhr, iqamah: jIq ?? j[1] ?? null });
   } else {
@@ -814,12 +817,24 @@ function announcementView(
   const leftH = bottom - top;
   const leftW = clamp((W - 2 * P) * 0.33, 220, 540);
   out.push(splitLeftPanel(tt, m, clock, greg, hij, p, L, P, top, leftW, leftH, logo));
-  const imgX = P + leftW + gap;
-  const imgW = W - P - imgX;
-  const r = Math.min(imgW, leftH) * 0.04;
-  out.push(`<clipPath id="annclip"><rect x="${imgX.toFixed(1)}" y="${top.toFixed(1)}" width="${imgW.toFixed(1)}" height="${leftH.toFixed(1)}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}"/></clipPath>`);
-  out.push(`<image href="${image}" x="${imgX.toFixed(1)}" y="${top.toFixed(1)}" width="${imgW.toFixed(1)}" height="${leftH.toFixed(1)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#annclip)"/>`);
-  out.push(rect(imgX, top, imgW, leftH, r, 'none', `stroke="${HAIR}" stroke-width="1"`));
+  // A fixed 16:9 frame centred in the right area; the image is *contained* (no crop)
+  // inside it, with a dark backdrop showing in any letterbox margins.
+  const availX = P + leftW + gap;
+  const availW = W - P - availX;
+  const availH = leftH;
+  let fw = availW;
+  let fh = (availW * 9) / 16;
+  if (fh > availH) {
+    fh = availH;
+    fw = (availH * 16) / 9;
+  }
+  const fx = availX + (availW - fw) / 2;
+  const fy = top + (availH - fh) / 2;
+  const r = Math.min(fw, fh) * 0.04;
+  out.push(rect(fx, fy, fw, fh, r, hexToRgba(p.bg, 0.85)));
+  out.push(`<clipPath id="annclip"><rect x="${fx.toFixed(1)}" y="${fy.toFixed(1)}" width="${fw.toFixed(1)}" height="${fh.toFixed(1)}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}"/></clipPath>`);
+  out.push(`<image href="${image}" x="${fx.toFixed(1)}" y="${fy.toFixed(1)}" width="${fw.toFixed(1)}" height="${fh.toFixed(1)}" preserveAspectRatio="xMidYMid meet" clip-path="url(#annclip)"/>`);
+  out.push(rect(fx, fy, fw, fh, r, 'none', `stroke="${HAIR}" stroke-width="1"`));
   return out.join('');
 }
 

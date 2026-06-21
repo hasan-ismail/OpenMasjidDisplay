@@ -164,8 +164,17 @@ export function localParts(instant: Date, timeZone?: string): DateParts {
     second: '2-digit',
   };
   if (timeZone) opts.timeZone = timeZone;
+  let fmt: Intl.DateTimeFormat;
+  try {
+    fmt = new Intl.DateTimeFormat('en-US', opts);
+  } catch {
+    // An invalid IANA zone (e.g. a stale hand-typed value) would otherwise throw and
+    // blank the whole display — fall back to the host zone instead.
+    delete opts.timeZone;
+    fmt = new Intl.DateTimeFormat('en-US', opts);
+  }
   const p: Record<string, string> = {};
-  for (const part of new Intl.DateTimeFormat('en-US', opts).formatToParts(instant)) {
+  for (const part of fmt.formatToParts(instant)) {
     p[part.type] = part.value;
   }
   return {

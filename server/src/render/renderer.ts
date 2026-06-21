@@ -61,7 +61,8 @@ function timetableVf(d: Dims, ticker: TickerSpec | null): string {
   const dt: string[] = [];
   for (let k = 0; k < copies; k++) {
     const x = `w-mod(t*${speed}\\,${period})${k > 0 ? `-${k}*(${period})` : ''}`;
-    dt.push(`drawtext=fontfile='${ticker.fontfile}':textfile='${ticker.textfile}':fontsize=${size}:fontcolor=white:x=${x}:y=${yExpr}`);
+    // expansion=none: treat the message file as literal text (no %{...} / escape interpretation).
+    dt.push(`drawtext=fontfile='${ticker.fontfile}':textfile='${ticker.textfile}':expansion=none:fontsize=${size}:fontcolor=white:x=${x}:y=${yExpr}`);
   }
   return `fps=15,${dt.join(',')},format=yuv420p`;
 }
@@ -85,6 +86,9 @@ function transcodeArgs(url: string, d: Dims, target: string): string[] {
   const br = d.height >= 1080 ? 4500 : 2500;
   return [
     '-hide_banner', '-loglevel', 'warning',
+    // Defence-in-depth: even if a non-rtsp URL ever slipped past validation, ffmpeg
+    // may only speak these protocols (no file:/http:/concat: local read or SSRF).
+    '-protocol_whitelist', 'rtp,rtcp,udp,tcp,rtsp,rtsps,tls,crypto',
     '-rtsp_transport', 'tcp', '-i', url,
     '-map', '0:v:0',
     '-vf', `scale=${d.width}:${d.height}:force_original_aspect_ratio=decrease,pad=${d.width}:${d.height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p,fps=15`,
@@ -98,12 +102,19 @@ function transcodeArgs(url: string, d: Dims, target: string): string[] {
   ];
 }
 
-/** Common ffmpeg lifecycle with self-healing restart. */
+/** Strip any user:pass@ credentials from URLs so they never reach the logs. */
+function redactCreds(s: string): string {
+  return s.replace(/(\w+:\/\/)[^@\s/]+@/g, '$1***@');
+}
+
+/** Common ffmpeg lifecycle with self-healing restart (capped exponential backoff). */
 abstract class FfmpegPipeline {
   protected proc: ChildProcess | null = null;
   protected stopped = false;
   private stderrTail = '';
   private restartTimer: NodeJS.Timeout | null = null;
+  private failStreak = 0;
+  private startedAt = 0;
 
   protected constructor(protected readonly id: string) {}
 
@@ -119,6 +130,7 @@ abstract class FfmpegPipeline {
     if (this.stopped) return;
     const proc = spawn(FFMPEG, this.args(), { stdio: ['pipe', 'ignore', 'pipe'] });
     this.proc = proc;
+    this.startedAt = Date.now();
     // If ffmpeg exits while we're mid-write, the stdin pipe emits EPIPE. Swallow it
     // here — an unhandled stream 'error' would crash the whole process. The 'exit'
     // handler below is what actually restarts ffmpeg.
@@ -132,9 +144,13 @@ abstract class FfmpegPipeline {
       // SIGKILL): only the currently-tracked child may schedule a restart.
       if (this.stopped || this.proc !== proc) return;
       this.proc = null;
-      if (this.stderrTail.trim()) log.debug(`ffmpeg ${this.id}: ${this.stderrTail.trim().split('\n').pop()}`);
-      log.warn(`ffmpeg ${this.id} exited (code ${code}); restarting in 2s`);
-      this.restartTimer = setTimeout(() => this.spawnProc(), 2000);
+      // Reset the backoff if it ran healthily for a while; otherwise ramp it so a
+      // permanently-bad source/args can't churn (and spam logs) every 2s forever.
+      this.failStreak = Date.now() - this.startedAt > 30_000 ? 0 : this.failStreak + 1;
+      const delay = Math.min(60_000, 2000 * 2 ** Math.min(this.failStreak, 5));
+      if (this.stderrTail.trim()) log.debug(`ffmpeg ${this.id}: ${redactCreds(this.stderrTail.trim().split('\n').pop() ?? '')}`);
+      log.warn(`ffmpeg ${this.id} exited (code ${code}); restarting in ${Math.round(delay / 1000)}s`);
+      this.restartTimer = setTimeout(() => this.spawnProc(), delay);
     });
     this.onSpawned();
   }

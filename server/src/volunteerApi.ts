@@ -21,6 +21,7 @@ import {
   clearVolunteerCookieHeader,
 } from './auth';
 import { normContent } from './validate';
+import { LoginLimiter } from './rateLimit';
 import type { ContentRef } from './types';
 
 const log = makeLog('volunteer');
@@ -71,9 +72,10 @@ const VOLUNTEER_FLAG = '<script>window.__OMD_VOLUNTEER__=true;</script>';
 /** Serve the SPA. index.html gets a flag injected so the app boots the volunteer UI. */
 function serveSpa(res: ServerResponse, pathname: string): void {
   const rel = pathname === '/' || pathname === '' ? 'index.html' : pathname.replace(/^\/+/, '');
-  const full = path.join(config.publicDir, rel);
+  const full = path.resolve(config.publicDir, rel);
+  const root = path.resolve(config.publicDir);
   const isIndex = rel === 'index.html';
-  if (!isIndex && full.startsWith(path.resolve(config.publicDir)) && fs.existsSync(full) && fs.statSync(full).isFile()) {
+  if (!isIndex && full.startsWith(root + path.sep) && fs.existsSync(full) && fs.statSync(full).isFile()) {
     const ext = path.extname(full).toLowerCase();
     res.writeHead(200, {
       'content-type': MIME[ext] ?? 'application/octet-stream',
@@ -103,6 +105,7 @@ function labelFor(store: Store, c: ContentRef): string {
 
 export function createVolunteerApi(deps: { store: Store; orchestrator: Orchestrator }) {
   const { store, orchestrator } = deps;
+  const loginLimiter = new LoginLimiter();
   const enabled = () => store.db.settings.volunteerEnabled && !!store.db.volunteerAuth;
   const authed = (req: IncomingMessage) => hasValidVolunteerSession(req, store.secret);
 
@@ -119,12 +122,16 @@ export function createVolunteerApi(deps: { store: Store; orchestrator: Orchestra
       }
       if (pathname === '/api/volunteer/login' && method === 'POST') {
         if (!enabled()) return sendJson(res, 403, { error: 'The volunteer page is turned off.' });
+        const wait = loginLimiter.retryAfterMs(req);
+        if (wait > 0) return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(wait / 1000)}s.` });
         const body = await readBody(req);
         const pin = String(body.pin ?? '');
         if (store.db.volunteerAuth && verifyPassword(pin, store.db.volunteerAuth)) {
+          loginLimiter.succeed(req);
           res.setHeader('set-cookie', setVolunteerCookieHeader(makeVolunteerToken(store.secret)));
           return sendJson(res, 200, { ok: true });
         }
+        loginLimiter.fail(req);
         return sendJson(res, 401, { error: 'Wrong PIN.' });
       }
       if (pathname === '/api/volunteer/logout' && method === 'POST') {
