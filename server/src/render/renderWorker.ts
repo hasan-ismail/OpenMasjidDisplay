@@ -73,11 +73,11 @@ port.on('message', (msg: Req) => {
       return;
     }
     // raw RGBA for the video pipeline. During an announcement slideshow phase the
-    // backdrop is the (sharp) announcement image instead of the custom/themed one.
-    const { logo } = assets(tt);
+    // timetable becomes a left sidebar and the (sharp) image fills the right.
+    const { bg, logo } = assets(tt);
     const annFile = activeAnnouncementImage(tt, now);
-    const bg = annFile ? announcementDataUri(annFile) : tt.backgroundImage ? backgroundDataUri(tt.backgroundImage) : null;
-    const svg = renderDisplaySvg(tt, now, { bg, logo, bgClear: !!annFile });
+    const announcement = annFile ? announcementDataUri(annFile) : null;
+    const svg = renderDisplaySvg(tt, now, { bg, logo, announcement });
     const r = new Resvg(svg, { font: fontOptions() }).render();
     const px = r.pixels;
     const ab = new ArrayBuffer(px.byteLength);

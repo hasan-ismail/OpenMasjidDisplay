@@ -11,7 +11,7 @@ export type Orientation = 'landscape' | 'portrait';
 /** Arrangement preset for the on-screen layout (see render/svg.ts). */
 export type TimetableLayout = 'centered' | 'clockTop' | 'split';
 export type Lang = 'en' | 'ar' | 'ur';
-export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi';
+export type CalcMethod = 'MWL' | 'ISNA' | 'Egypt' | 'Makkah' | 'Karachi' | 'Custom';
 export type AsrMadhab = 'Standard' | 'Hanafi';
 export type TimeFormat = '12h' | '24h';
 
@@ -86,6 +86,10 @@ export interface Timetable {
   latitude: number | null;
   longitude: number | null;
   method: CalcMethod;
+  /** Fajr sun-depression angle (degrees), used when method is 'Custom' */
+  fajrAngle: number;
+  /** Isha sun-depression angle (degrees), used when method is 'Custom' */
+  ishaAngle: number;
   asrMadhab: AsrMadhab;
   /** IANA timezone; '' = use the server's zone */
   timezone: string;

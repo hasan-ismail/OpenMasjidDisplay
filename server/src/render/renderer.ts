@@ -162,7 +162,9 @@ class TimetablePipeline extends FfmpegPipeline {
     const tt = this.getTt();
     let delay = 1000;
     try {
-      if (tt && tickerActive(tt, new Date())) delay = 250; // ~4fps for a readable scroll
+      // Render faster while a ticker scrolls (capped by what the box can do via the
+      // in-flight guard); idle at 1fps otherwise to keep CPU low.
+      if (tt && tickerActive(tt, new Date())) delay = 100;
     } catch {
       /* keep default */
     }

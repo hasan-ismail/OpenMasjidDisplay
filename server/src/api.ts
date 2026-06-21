@@ -29,7 +29,7 @@ import {
   isAllowedImageMime,
 } from './render/background';
 import { renderPreviewPng, renderPreviewMeta } from './render/renderPool';
-import { parseIqamahCsv, toCsv, templateCsv } from './iqamahCsv';
+import { parseIqamahCsv, toCsv, templateCsv, normalizeIqamahYear } from './iqamahCsv';
 import {
   normTimetable,
   normSource,
@@ -380,6 +380,21 @@ export function createApi(deps: Deps) {
           store.update((db) => void delete db.timetables[idx].iqamahYear);
           return sendJson(res, 200, store.db.timetables[idx]);
         }
+      }
+
+      // ---- Yearly Iqamah times set from the in-app monthly editor ----------
+      const iyMatch = /^\/api\/timetables\/([\w-]+)\/iqamah-year$/.exec(pathname);
+      if (iyMatch && method === 'PUT') {
+        const id = iyMatch[1];
+        const idx = store.db.timetables.findIndex((t) => t.id === id);
+        if (idx < 0) return sendJson(res, 404, { error: 'Timetable not found.' });
+        const body = await readBody(req, 2_000_000);
+        const year = normalizeIqamahYear(body.year);
+        store.update((db) => {
+          if (Object.keys(year).length) db.timetables[idx].iqamahYear = year;
+          else delete db.timetables[idx].iqamahYear;
+        });
+        return sendJson(res, 200, { ok: true, rows: Object.keys(year).length });
       }
 
       // ---- Announcement slideshow images ----------------------------------

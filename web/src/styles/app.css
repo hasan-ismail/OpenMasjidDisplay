@@ -362,6 +362,14 @@ h1, h2, h3, p { margin: 0; }
 .msg-row .msg-time { width: 7rem; flex-shrink: 0; }
 @media (max-width: 760px) { .msg-row .msg-time { width: 5.5rem; } }
 
+/* Monthly Iqamah grid editor. */
+.iqyear-scroll { max-height: 22rem; overflow: auto; border-radius: var(--radius-button); box-shadow: inset 0 0 0 1px var(--color-border); }
+.iqyear-grid { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.iqyear-grid th, .iqyear-grid td { padding: 0.2rem 0.35rem; text-align: center; }
+.iqyear-grid thead th { position: sticky; top: 0; background: var(--color-surface); color: var(--color-ink-muted); font-weight: 600; z-index: 1; }
+.iqyear-day { color: var(--color-ink-muted); font-variant-numeric: tabular-nums; width: 2.2rem; }
+.iqyear-cell { padding: 0.2rem 0.3rem; height: 1.9rem; width: 100%; min-width: 5.5rem; }
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 760px) {
   .studio { grid-template-columns: 1fr; }

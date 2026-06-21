@@ -325,12 +325,14 @@ function buildModel(tt: Timetable, now: Date): Model {
   const tz = tt.timezone || undefined;
   const parts = localParts(now, tz);
   const off = timezoneOffsetHours(now, tz);
-  const times = prayerTimes(parts, tt.latitude!, tt.longitude!, off, tt.method, tt.asrMadhab);
+  // A 'Custom' method uses the masjid's own Fajr/Isha sun-depression angles.
+  const method = tt.method === 'Custom' ? { label: 'Custom', fajr: tt.fajrAngle ?? 18, isha: tt.ishaAngle ?? 17 } : tt.method;
+  const times = prayerTimes(parts, tt.latitude!, tt.longitude!, off, method, tt.asrMadhab);
 
   const tomorrow = new Date(now.getTime() + 86400000);
   const tParts = localParts(tomorrow, tz);
   const tOff = timezoneOffsetHours(tomorrow, tz);
-  const tomorrowFajr = prayerTimes(tParts, tt.latitude!, tt.longitude!, tOff, tt.method, tt.asrMadhab).fajr;
+  const tomorrowFajr = prayerTimes(tParts, tt.latitude!, tt.longitude!, tOff, method, tt.asrMadhab).fajr;
 
   const nowHours = parts.hour + parts.minute / 60 + parts.second / 3600;
   const order = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
@@ -655,9 +657,12 @@ function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number): s
   const out: string[] = [];
   out.push(rect(0, y, W, bandH, 0, hexToRgba(p.bg, 0.6)));
   out.push(rect(0, y, W, Math.max(1.5, bandH * 0.025), 0, hexToRgba(p.primary, 0.55)));
-  const seg = `${msg}      •      `;
+  // Generous gap + a gold bullet between messages so they read as separate items.
+  const sep = '          ●          ';
+  const seg = `${msg}${sep}`;
   const segW = Math.max(60, approxWidth(seg, fs));
-  const speed = clamp(Math.min(W, H) * 0.05, 45, 120); // px per second
+  // Slow, steady scroll (looks smoother at the modest frame rate we can sustain).
+  const speed = clamp(Math.min(W, H) * 0.035, 30, 80); // px per second
   const offset = ((now.getTime() / 1000) * speed) % segW;
   const baseline = y + bandH * 0.66;
   for (let x = -offset; x < W; x += segW) {
@@ -700,31 +705,15 @@ function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms
   return out.join('');
 }
 
-/** The MasjidBox-style split: a dense prayer list on the left, big countdown right. */
-function splitView(
-  tt: Timetable,
-  m: Model,
-  clock: ClockText,
-  hms: [number, number, number],
-  greg: string,
-  hij: string,
-  p: Palette,
-  L: Record<string, string>,
-  W: number,
-  H: number,
-  P: number,
-  logo: string | null,
+/** The dense left timetable panel (brand, clock, date, prayer list) shared by the
+ *  split layout and the announcement (sidebar) layout. */
+function splitLeftPanel(
+  tt: Timetable, m: Model, clock: ClockText, greg: string, hij: string, p: Palette, L: Record<string, string>,
+  leftX: number, top: number, leftW: number, leftH: number, logo: string | null,
 ): string {
   const out: string[] = [];
-  const gap = Math.min(W, H) * 0.014;
-  const top = P;
-  const bottom = H - P - H * 0.05;
-  const leftW = (W - 2 * P - gap * 1.6) * 0.44;
-  const leftX = P;
-  const leftH = bottom - top;
+  const bottom = top + leftH;
   const pad = leftW * 0.075;
-
-  // ── Left panel: brand, clock, date, then the prayer list ──
   out.push(glass(leftX, top, leftW, leftH, Math.min(leftW, leftH) * 0.05));
   let cy = top + pad;
   if (tt.showLogo) {
@@ -736,8 +725,6 @@ function splitView(
     out.push(text(leftX + pad, cy + leftW * 0.08, tt.masjidName, { size: clamp(leftW * 0.085, 14, 32), fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'start', editId: 'masjidName' }));
     cy += leftW * 0.13;
   }
-  // Clock on its own line, fit to the panel width (so a seconds clock can't run
-  // into the dates), then the dates stacked below it.
   const clockStr = clock.time + (clock.period ? ` ${clock.period}` : '');
   const maxW = leftW - 2 * pad;
   let clockSize = clamp(leftW * 0.2, 30, 92);
@@ -756,7 +743,6 @@ function splitView(
     cy += pad * 0.4;
   }
 
-  // List header + rows.
   const colAdhan = leftX + leftW * 0.66;
   const colIq = leftX + leftW - pad;
   const headSize = clamp(leftW * 0.04, 9, 16);
@@ -773,15 +759,49 @@ function splitView(
     const nameSize = clamp(rowH * 0.34, 12, 30);
     const timeSize = clamp(rowH * 0.34, 12, 30);
     out.push(text(leftX + pad, midY, L[r.label] ?? r.label, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', editId: `label.${r.label}` }));
-    // Adhan is the muted column; Iqamah is emphasised (bright) — that's the one people line up for.
     out.push(text(colAdhan, midY, fmtShort(r.adhan, tt.timeFormat), { size: timeSize * 0.92, fill: p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
     out.push(text(colIq, midY, r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : '—', { size: timeSize, fill: r.iqamah != null ? p.text : p.textFaint, family: FONT_DISPLAY, weight: 700, anchor: 'end' }));
   });
+  return out.join('');
+}
 
-  // ── Right: big countdown hero ──
-  const heroX = leftX + leftW + gap * 1.6;
+/** The MasjidBox-style split: a dense prayer list on the left, big countdown right. */
+function splitView(
+  tt: Timetable, m: Model, clock: ClockText, hms: [number, number, number], greg: string, hij: string,
+  p: Palette, L: Record<string, string>, W: number, H: number, P: number, logo: string | null,
+): string {
+  const gap = Math.min(W, H) * 0.014;
+  const top = P;
+  const bottom = H - P - H * 0.05;
+  const leftW = (W - 2 * P - gap * 1.6) * 0.44;
+  const leftH = bottom - top;
+  const heroX = P + leftW + gap * 1.6;
   const heroW = W - P - heroX;
-  out.push(countdownHero(heroX + heroW / 2, (top + bottom) / 2, heroW, m.rows.find((r) => r.next)?.label ?? 'fajr', hms, p, L));
+  return (
+    splitLeftPanel(tt, m, clock, greg, hij, p, L, P, top, leftW, leftH, logo) +
+    countdownHero(heroX + heroW / 2, (top + bottom) / 2, heroW, m.rows.find((r) => r.next)?.label ?? 'fajr', hms, p, L)
+  );
+}
+
+/** Announcement layout: the timetable becomes a left sidebar and the cycling
+ *  image fills the right (shown sharp). */
+function announcementView(
+  tt: Timetable, m: Model, clock: ClockText, greg: string, hij: string, p: Palette, L: Record<string, string>,
+  W: number, H: number, P: number, logo: string | null, image: string,
+): string {
+  const out: string[] = [];
+  const gap = Math.min(W, H) * 0.02;
+  const top = P;
+  const bottom = H - P - H * 0.05;
+  const leftH = bottom - top;
+  const leftW = clamp((W - 2 * P) * 0.33, 220, 540);
+  out.push(splitLeftPanel(tt, m, clock, greg, hij, p, L, P, top, leftW, leftH, logo));
+  const imgX = P + leftW + gap;
+  const imgW = W - P - imgX;
+  const r = Math.min(imgW, leftH) * 0.04;
+  out.push(`<clipPath id="annclip"><rect x="${imgX.toFixed(1)}" y="${top.toFixed(1)}" width="${imgW.toFixed(1)}" height="${leftH.toFixed(1)}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}"/></clipPath>`);
+  out.push(`<image href="${image}" x="${imgX.toFixed(1)}" y="${top.toFixed(1)}" width="${imgW.toFixed(1)}" height="${leftH.toFixed(1)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#annclip)"/>`);
+  out.push(rect(imgX, top, imgW, leftH, r, 'none', `stroke="${HAIR}" stroke-width="1"`));
   return out.join('');
 }
 
@@ -802,8 +822,8 @@ function setupNeeded(p: Palette, W: number, H: number, masjidName: string): stri
 export interface RenderOpts {
   /** data: URI of a custom background image, or null for the themed scene */
   bg?: string | null;
-  /** when true, the bg is an announcement image → show it sharp (no frost blur) */
-  bgClear?: boolean;
+  /** data: URI of an announcement image → timetable becomes a left sidebar, image fills the right */
+  announcement?: string | null;
   /** data: URI of an uploaded masjid logo, or null for the built-in mark */
   logo?: string | null;
   /** when present, click-to-edit text regions are collected here (no extra cost
@@ -871,10 +891,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
   // ── Background + sky ───────────────────────────────────────────────────────
   if (hasImage) {
-    // A custom background is frosted (so text reads over it); an announcement image
-    // is shown sharp — it's the thing people are meant to look at.
-    const filter = opts.bgClear ? '' : ' filter="url(#frost)"';
-    out.push(`<image href="${opts.bg}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"${filter}/>`);
+    out.push(`<image href="${opts.bg}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" filter="url(#frost)"/>`);
     out.push(rect(0, 0, W, H, 0, 'url(#scrim)'));
   } else {
     out.push(rect(0, 0, W, H, 0, 'url(#scene)'));
@@ -884,7 +901,10 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   out.push(lightBeams(cel, W, H)); // soft shafts falling over the scene
   out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
 
-  if (layout === 'split') {
+  if (opts.announcement) {
+    // Slideshow: timetable becomes a left sidebar, the image fills the right.
+    out.push(announcementView(tt, m, clock, greg, hij, p, L, W, H, P, logo, opts.announcement));
+  } else if (layout === 'split') {
     out.push(splitView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo));
   } else {
     // ── Masthead ──
@@ -934,7 +954,10 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
   // ── Footer (hidden when the ticker is running — they share the bottom strip) ──
   if (tt.showFooter && !tickerText) {
-    const methodNote = `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
+    const methodNote =
+      tt.method === 'Custom'
+        ? `Custom ${tt.fajrAngle ?? 18}° / ${tt.ishaAngle ?? 17}° · Asr: ${tt.asrMadhab}`
+        : `${METHODS[tt.method]?.label ?? tt.method} · Asr: ${tt.asrMadhab}`;
     out.push(text(W / 2, H - P * 0.5, tt.footerNote || methodNote, { size: clamp(Math.min(W, H) * 0.014, 11, 20), fill: p.textFaint, anchor: 'middle', letter: 0.5, editId: 'footerNote' }));
   }
 

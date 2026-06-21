@@ -9,7 +9,7 @@ interface Props {
   refetch: () => Promise<void>;
 }
 
-const METHODS = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi'] as const;
+const METHODS = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Custom'] as const;
 const LAYOUTS: { id: TimetableLayout; label: string }[] = [
   { id: 'centered', label: 'Centered' },
   { id: 'clockTop', label: 'Clock on top' },
@@ -114,7 +114,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     orientation: 'landscape', quality: state.settings.defaultQuality, layout: 'centered', layoutCarousel: false,
     masjidName: state.timetables[0]?.masjidName ?? 'Our Masjid',
     latitude: '', longitude: '',
-    method: 'MWL', asrMadhab: 'Standard', timezone: state.settings.scheduleTimezone ?? '',
+    method: 'MWL', fajrAngle: 18, ishaAngle: 17, asrMadhab: 'Hanafi', timezone: state.settings.scheduleTimezone ?? '',
     timeFormat: '12h', language: 'en', hijriOffset: 0, gregorianOffset: 0,
     iqamah: { fajr: { mode: 'offset', offset: 20 }, dhuhr: { mode: 'offset', offset: 10 }, asr: { mode: 'offset', offset: 10 }, maghrib: { mode: 'offset', offset: 5 }, isha: { mode: 'offset', offset: 10 } },
     jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true,
@@ -223,6 +223,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   };
 
   const [csvRows, setCsvRows] = useState<number | null>(tt?.iqamahYear ? Object.keys(tt.iqamahYear).length : null);
+  const [showTable, setShowTable] = useState(false);
   const importCsv = (file: File) => {
     if (!tt) return;
     const reader = new FileReader();
@@ -325,16 +326,26 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           <div className="grid2">
             <Field label="Calculation method">
               <select className="select" value={f.method} onChange={(e) => set('method', e.target.value as Form['method'])}>
-                {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                {METHODS.map((m) => <option key={m} value={m}>{m === 'Custom' ? 'Custom (set angles)' : m}</option>)}
               </select>
             </Field>
             <Field label="Asr time">
               <select className="select" value={f.asrMadhab} onChange={(e) => set('asrMadhab', e.target.value as Form['asrMadhab'])}>
-                <option value="Standard">Standard (Shafi'i/Maliki/Hanbali)</option>
                 <option value="Hanafi">Hanafi (later)</option>
+                <option value="Standard">Standard (Shafi'i/Maliki/Hanbali)</option>
               </select>
             </Field>
           </div>
+          {f.method === 'Custom' && (
+            <div className="grid2">
+              <Field label="Fajr angle (degrees below horizon)" hint="e.g. 18 — your local convention.">
+                <input className="input" type="number" min={0} max={30} step={0.5} value={f.fajrAngle} onChange={(e) => set('fajrAngle', Number(e.target.value))} />
+              </Field>
+              <Field label="Isha angle (degrees below horizon)" hint="e.g. 17.">
+                <input className="input" type="number" min={0} max={30} step={0.5} value={f.ishaAngle} onChange={(e) => set('ishaAngle', Number(e.target.value))} />
+              </Field>
+            </div>
+          )}
 
           <div className="grid2">
             <Field label="Time zone" hint="Pick the closest city/zone.">
@@ -486,13 +497,17 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
               </div>
               {csvRows != null && (
                 <p className="hint" style={{ marginBlockStart: '0.5rem' }}>
-                  {csvRows} day{csvRows === 1 ? '' : 's'} set from CSV. These show on the screens; the live preview
-                  here still uses your rules.
+                  {csvRows} day{csvRows === 1 ? '' : 's'} set. These show on the screens; the live preview here
+                  still uses your rules.
                 </p>
               )}
+              <button type="button" className="btn btn--ghost btn--sm" style={{ marginBlockStart: '0.6rem' }} onClick={() => setShowTable((v) => !v)}>
+                {showTable ? 'Hide the table editor' : 'Or edit times in a table (by month)'}
+              </button>
+              {showTable && <IqamahYearEditor tt={tt} onSaved={(n) => setCsvRows(n || null)} />}
             </div>
           ) : (
-            <span className="hint">Create the timetable first, then you can upload a yearly CSV.</span>
+            <span className="hint">Create the timetable first, then you can set yearly times.</span>
           )}
 
           <h3 className="section-title">Announcement slideshow (images)</h3>
@@ -722,6 +737,70 @@ function JumuahEditor({ times, onChange }: { times: string[]; onChange: (t: stri
         </span>
       ))}
       <button className="btn btn--ghost btn--sm" onClick={() => onChange([...times, '13:30'])}><IconPlus size={14} /> Add time</button>
+    </div>
+  );
+}
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/** In-app monthly grid for setting exact Iqamah clock times across the year. */
+function IqamahYearEditor({ tt, onSaved }: { tt: Timetable; onSaved: (rows: number) => void }) {
+  const toast = useToast();
+  const [year, setYear] = useState<Record<string, Record<string, string>>>(() => JSON.parse(JSON.stringify(tt.iqamahYear ?? {})));
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [busy, setBusy] = useState(false);
+  const PR = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const key = (d: number) => `${pad(month)}-${pad(d)}`;
+  const get = (d: number, pr: string) => year[key(d)]?.[pr] ?? '';
+  const setCell = (d: number, pr: string, val: string) =>
+    setYear((y) => {
+      const k = key(d);
+      const row = { ...(y[k] ?? {}) };
+      if (val) row[pr] = val; else delete row[pr];
+      const ny = { ...y };
+      if (Object.keys(row).length) ny[k] = row; else delete ny[k];
+      return ny;
+    });
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api.saveIqamahYear(tt.id, year);
+      onSaved(r.rows);
+      toast(`Saved Iqamah times for ${r.rows} day${r.rows === 1 ? '' : 's'}.`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not save the times.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="iqyear">
+      <div className="row" style={{ gap: '0.5rem', marginBlock: '0.7rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select className="select" style={{ width: 'auto' }} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+          {MONTHS.map((mn, i) => <option key={mn} value={i + 1}>{mn}</option>)}
+        </select>
+        <button type="button" className="btn btn--primary btn--sm" onClick={save} disabled={busy}>Save times</button>
+        <span className="hint">Blank = use the rule. Saved for the whole year.</span>
+      </div>
+      <div className="iqyear-scroll">
+        <table className="iqyear-grid">
+          <thead>
+            <tr><th>Day</th>{PR.map((pr) => <th key={pr}>{PRAYER_TITLE[pr]}</th>)}</tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: DAYS_IN_MONTH[month - 1] }, (_, i) => i + 1).map((d) => (
+              <tr key={d}>
+                <td className="iqyear-day">{d}</td>
+                {PR.map((pr) => (
+                  <td key={pr}><input type="time" className="input iqyear-cell" value={get(d, pr)} onChange={(e) => setCell(d, pr, e.target.value)} /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

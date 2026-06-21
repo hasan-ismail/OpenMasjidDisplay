@@ -35,7 +35,8 @@ export interface MethodDef {
   maghrib?: number;
 }
 
-export const METHODS: Record<CalcMethod, MethodDef> = {
+// 'Custom' has no fixed entry — its angles come from the timetable at render time.
+export const METHODS: Record<Exclude<CalcMethod, 'Custom'>, MethodDef> = {
   MWL: { label: 'Muslim World League', fajr: 18, isha: 17 },
   ISNA: { label: 'Islamic Society of North America', fajr: 15, isha: 15 },
   Egypt: { label: 'Egyptian General Authority', fajr: 19.5, isha: 17.5 },
@@ -97,10 +98,10 @@ export function prayerTimes(
   lat: number,
   lng: number,
   tz: number,
-  methodKey: CalcMethod,
+  method: CalcMethod | MethodDef,
   asrMadhab: AsrMadhab,
 ): PrayerTimes {
-  const m = METHODS[methodKey] ?? METHODS.MWL;
+  const m = typeof method === 'string' ? METHODS[method as Exclude<CalcMethod, 'Custom'>] ?? METHODS.MWL : method;
   const jd = julian(date.year, date.month, date.day);
   // Evaluate the sun at local apparent noon for best accuracy.
   const { declination: decl, equation: eqt } = sunPosition(jd + 0.5 - lng / 360);

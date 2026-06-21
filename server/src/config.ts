@@ -57,7 +57,7 @@ export const config = {
     latitude: env('LATITUDE', ''),
     longitude: env('LONGITUDE', ''),
     method: env('CALC_METHOD', 'MWL'),
-    asrMadhab: env('ASR_MADHAB', 'Standard'),
+    asrMadhab: env('ASR_MADHAB', 'Hanafi'),
     timezone: env('TIMEZONE', ''),
     timeFormat: env('TIME_FORMAT', '12h'),
     language: env('LANGUAGE', 'en'),

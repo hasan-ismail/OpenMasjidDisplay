@@ -41,6 +41,12 @@ function intIn(v: unknown, def: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return def;
   return Math.min(max, Math.max(min, n));
 }
+/** A clamped float (allows decimals, e.g. a 17.5° angle). */
+function numIn(v: unknown, def: number, min: number, max: number): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, n));
+}
 function numOrNull(v: unknown): number | null {
   if (v === '' || v == null) return null;
   const n = Number(v);
@@ -58,7 +64,7 @@ function hhmmOrNull(v: unknown): string | null {
 }
 
 const THEME_IDS = THEMES.map((t) => t.id);
-const METHODS_LIST: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi'];
+const METHODS_LIST: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Custom'];
 
 export function normContent(v: unknown): ContentRef {
   const o = asObj(v);
@@ -162,7 +168,9 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     latitude: o.latitude === undefined ? base?.latitude ?? null : geoOrNull(o.latitude, -90, 90),
     longitude: o.longitude === undefined ? base?.longitude ?? null : geoOrNull(o.longitude, -180, 180),
     method: oneOf(o.method, METHODS_LIST, base?.method ?? 'MWL'),
-    asrMadhab: oneOf(o.asrMadhab, ['Standard', 'Hanafi'] as const, base?.asrMadhab ?? 'Standard') as AsrMadhab,
+    fajrAngle: o.fajrAngle === undefined ? base?.fajrAngle ?? 18 : numIn(o.fajrAngle, 18, 0, 30),
+    ishaAngle: o.ishaAngle === undefined ? base?.ishaAngle ?? 17 : numIn(o.ishaAngle, 17, 0, 30),
+    asrMadhab: oneOf(o.asrMadhab, ['Standard', 'Hanafi'] as const, base?.asrMadhab ?? 'Hanafi') as AsrMadhab,
     timezone: str(o.timezone, base?.timezone ?? '', 64).trim(),
     timeFormat: oneOf(o.timeFormat, ['12h', '24h'] as const, base?.timeFormat ?? '12h') as TimeFormat,
     language: oneOf(o.language, ['en', 'ar', 'ur'] as const, base?.language ?? 'en') as Lang,

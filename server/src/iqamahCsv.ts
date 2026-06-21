@@ -112,6 +112,33 @@ export function parseIqamahCsv(text: string): ParsedCsv {
   return { data, rows, errors };
 }
 
+/** Validate/clean an IqamahYear object posted by the in-app monthly editor:
+ *  "MM-DD" keys, "HH:MM" times, only known prayer columns. */
+export function normalizeIqamahYear(input: unknown): IqamahYear {
+  const out: IqamahYear = {};
+  if (!input || typeof input !== 'object') return out;
+  let n = 0;
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 400) break;
+    const key = parseMonthDay(k);
+    if (!key || !v || typeof v !== 'object') continue;
+    const row = v as Record<string, unknown>;
+    const entry: Partial<Record<PrayerCol, string>> = {};
+    for (const p of PRAYERS) {
+      const raw = row[p];
+      if (typeof raw === 'string' && raw.trim()) {
+        const clk = parseClock(raw);
+        if (clk) entry[p] = clk;
+      }
+    }
+    if (Object.keys(entry).length > 0) {
+      out[key] = entry;
+      n++;
+    }
+  }
+  return out;
+}
+
 /** Serialise stored overrides back to CSV (sorted by date). */
 export function toCsv(year: IqamahYear | undefined): string {
   const head = 'date,fajr,dhuhr,asr,maghrib,isha,jumuah';
@@ -141,6 +168,7 @@ export function templateCsv(tt: Timetable): string {
   const hasLoc = tt.latitude != null && tt.longitude != null;
   const tz = tt.timezone || undefined;
   const YEAR = 2024; // a leap year, so 02-29 exists
+  const method = tt.method === 'Custom' ? { label: 'Custom', fajr: tt.fajrAngle ?? 18, isha: tt.ishaAngle ?? 17 } : tt.method;
   for (let mo = 1; mo <= 12; mo++) {
     for (let da = 1; da <= DAYS_IN_MONTH[mo - 1]; da++) {
       const key = `${pad2(mo)}-${pad2(da)}`;
@@ -151,7 +179,7 @@ export function templateCsv(tt: Timetable): string {
       const noon = new Date(Date.UTC(YEAR, mo - 1, da, 12));
       const off = timezoneOffsetHours(noon, tz);
       const parts = localParts(noon, tz);
-      const t = prayerTimes(parts, tt.latitude!, tt.longitude!, off, tt.method, tt.asrMadhab);
+      const t = prayerTimes(parts, tt.latitude!, tt.longitude!, off, method, tt.asrMadhab);
       const iq = (k: keyof typeof tt.iqamah, adhan: number) => fmtHHMM(iqamahHours(adhan, tt.iqamah[k]));
       lines.push(
         [key, iq('fajr', t.fajr), iq('dhuhr', t.dhuhr), iq('asr', t.asr), iq('maghrib', t.maghrib), iq('isha', t.isha), ''].join(','),

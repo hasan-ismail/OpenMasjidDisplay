@@ -68,6 +68,8 @@ export const api = {
   importIqamahCsv: (id: string, csvText: string) =>
     req<{ ok: boolean; rows: number; errors: string[] }>('POST', `/api/timetables/${id}/iqamah-csv`, { data: csvText }),
   clearIqamahCsv: (id: string) => req<Timetable>('DELETE', `/api/timetables/${id}/iqamah-csv`),
+  saveIqamahYear: (id: string, year: Record<string, Record<string, string>>) =>
+    req<{ ok: boolean; rows: number }>('PUT', `/api/timetables/${id}/iqamah-year`, { year }),
   iqamahCsvUrl: (id: string, mode?: 'template') =>
     `/api/timetables/${id}/iqamah-csv${mode ? `?mode=${mode}` : ''}`,
 

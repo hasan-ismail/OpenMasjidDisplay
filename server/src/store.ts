@@ -18,7 +18,7 @@ import type {
 const log = makeLog('store');
 const DB_VERSION = 1;
 
-const VALID_METHODS: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi'];
+const VALID_METHODS: CalcMethod[] = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Custom'];
 
 function pick<T extends string>(value: string, allowed: T[], fallback: T): T {
   return (allowed as string[]).includes(value) ? (value as T) : fallback;
@@ -55,7 +55,9 @@ function seededTimetable(): Timetable {
     latitude: Number.isFinite(lat) && Math.abs(lat) <= 90 ? lat : null,
     longitude: Number.isFinite(lng) && Math.abs(lng) <= 180 ? lng : null,
     method: pick<CalcMethod>(s.method, VALID_METHODS, 'MWL'),
-    asrMadhab: pick<AsrMadhab>(s.asrMadhab, ['Standard', 'Hanafi'], 'Standard'),
+    fajrAngle: 18,
+    ishaAngle: 17,
+    asrMadhab: pick<AsrMadhab>(s.asrMadhab, ['Standard', 'Hanafi'], 'Hanafi'),
     timezone: s.timezone,
     timeFormat: pick<TimeFormat>(s.timeFormat, ['12h', '24h'], '12h'),
     language: pick<Lang>(s.language, ['en', 'ar', 'ur'], 'en'),
@@ -90,6 +92,8 @@ function migrateTimetable(t: Timetable): Timetable {
     showFooter: t.showFooter ?? true,
     hijriOffset: t.hijriOffset ?? 0,
     gregorianOffset: t.gregorianOffset ?? 0,
+    fajrAngle: t.fajrAngle ?? 18,
+    ishaAngle: t.ishaAngle ?? 17,
     backgroundImage: t.backgroundImage ?? '',
     logoImage: t.logoImage ?? '',
     // Drop methods we no longer support (was Tehran/Jafari) → safe default.
