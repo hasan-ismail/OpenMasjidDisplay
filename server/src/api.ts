@@ -3,7 +3,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Resvg } from '@resvg/resvg-js';
 import { config } from './config';
 import { makeLog } from './logger';
 import type { Store } from './store';
@@ -18,9 +17,8 @@ import {
 } from './auth';
 import { platformUser, ssoConfigured } from './omos';
 import { THEMES } from './render/theme';
-import { renderDisplaySvg } from './render/svg';
-import { backgroundDataUri, saveBackground, removeBackground, isAllowedImageMime } from './render/background';
-import { fontOptions } from './render/fonts';
+import { saveBackground, removeBackground, isAllowedImageMime } from './render/background';
+import { renderPreviewPng } from './render/renderPool';
 import {
   normTimetable,
   normSource,
@@ -375,9 +373,8 @@ export function createApi(deps: Deps) {
         const body = await readBody(req);
         const tt = normTimetable(body);
         const bgFile = typeof body.backgroundImage === 'string' ? body.backgroundImage : '';
-        const bg = bgFile ? backgroundDataUri(bgFile) : null;
         const width = tt.orientation === 'portrait' ? 540 : 960;
-        const png = new Resvg(renderDisplaySvg(tt, new Date(), { bg }), { font: fontOptions(), fitTo: { mode: 'width', value: width } }).render().asPng();
+        const png = await renderPreviewPng(tt, Date.now(), width, bgFile);
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
         res.end(png);
         return;
@@ -386,9 +383,8 @@ export function createApi(deps: Deps) {
       if (prevMatch && method === 'GET') {
         const tt = store.db.timetables.find((t) => t.id === prevMatch[1]);
         if (!tt) return sendJson(res, 404, { error: 'Timetable not found.' });
-        const bg = tt.backgroundImage ? backgroundDataUri(tt.backgroundImage) : null;
         const width = tt.orientation === 'portrait' ? 540 : 960;
-        const png = new Resvg(renderDisplaySvg(tt, new Date(), { bg }), { font: fontOptions(), fitTo: { mode: 'width', value: width } }).render().asPng();
+        const png = await renderPreviewPng(tt, Date.now(), width, tt.backgroundImage || '');
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
         res.end(png);
         return;

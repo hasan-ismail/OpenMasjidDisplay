@@ -55,7 +55,14 @@ Per active timetable, one pipeline runs:
 1. Once per second, the current state is built into an **SVG** (`render/svg.ts`) — a liquid-glass design
    honouring the timetable's layout preset (centered / clock-top / split), element toggles, theme/accent,
    and an optional custom background (frosted and inlined as a data: URI by `render/background.ts`).
-2. resvg (`@resvg/resvg-js`, bundled native binary, fonts baked into the image) rasterises it to raw RGBA.
+2. resvg (`@resvg/resvg-js`, bundled native binary, fonts baked into the image) rasterises it to raw RGBA
+   **on a worker thread** (`render/renderWorker.ts`, managed by `render/renderPool.ts`). resvg is synchronous
+   and CPU-heavy; running it on the main thread once per second starved both ffmpeg's stdin and the
+   MediaMTX/HTTP server, so streams took minutes to come online and the panel felt sluggish. The worker keeps
+   the event loop free; at most one frame is in flight per pipeline, so a slow box just renders a little less
+   often instead of stalling. Control-panel previews share a second worker (so editing never stalls a live
+   stream). Only a small **curated set of base fonts** is loaded (`render/fonts.ts`) — loading every per-script
+   Noto file made each render parse far more data and could even hang resvg on glyph fallback.
 3. The RGBA frame is piped to **ffmpeg**, which upsamples to a steady ~15 fps and encodes H.264:
    `libx264 -preset ultrafast -tune zerolatency -profile baseline`, a fixed 2-second GOP, in-band SPS/PPS
    (`repeat-headers=1`), `yuv420p`, no audio — then publishes to MediaMTX over RTSP/TCP.

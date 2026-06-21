@@ -140,6 +140,7 @@ function ScheduleModal({ state, rule, onClose, onSaved }: { state: AppState; rul
   return (
     <Modal
       open
+      windowed
       onClose={onClose}
       title={rule ? 'Edit rule' : 'New schedule rule'}
       footer={

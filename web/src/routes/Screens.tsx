@@ -257,6 +257,7 @@ function TvModal({
   return (
     <Modal
       open
+      windowed
       onClose={onClose}
       title={tv ? 'Edit screen' : 'Add a screen'}
       footer={

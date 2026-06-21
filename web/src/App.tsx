@@ -108,18 +108,19 @@ function Dock({
             className={`nav-item${tab === id ? ' is-active' : ''}`}
             onClick={() => setTab(id)}
             aria-current={tab === id ? 'page' : undefined}
+            aria-label={label}
+            title={label}
           >
-            <Icon size={18} />
-            <span className="nav-label">{label}</span>
+            <Icon size={20} />
           </button>
         ))}
         <span className="dock-sep" aria-hidden="true" />
-        <button className="nav-item nav-item--util" onClick={onToggleTheme} aria-label="Toggle light or dark">
-          {dark ? <IconSun size={18} /> : <IconMoon size={18} />}
+        <button className="nav-item nav-item--util" onClick={onToggleTheme} aria-label="Toggle light or dark" title="Toggle light or dark">
+          {dark ? <IconSun size={20} /> : <IconMoon size={20} />}
         </button>
         {onLogout && (
           <button className="nav-item nav-item--util" onClick={onLogout} aria-label="Sign out" title="Sign out">
-            <IconPower size={18} />
+            <IconPower size={20} />
           </button>
         )}
       </nav>

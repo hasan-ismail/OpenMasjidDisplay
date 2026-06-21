@@ -182,6 +182,7 @@ function TimetableModal({ state, tt, onClose, onSaved }: { state: AppState; tt: 
     <Modal
       open
       wide
+      windowed
       onClose={onClose}
       title={tt ? 'Design timetable' : 'New timetable'}
       footer={

@@ -10,12 +10,10 @@
  * Pipelines self-heal: if ffmpeg exits unexpectedly it is respawned with backoff.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { Resvg } from '@resvg/resvg-js';
 import { config } from '../config';
 import { makeLog } from '../logger';
-import { fontOptions } from './fonts';
-import { renderDisplaySvg, dimsFor, type Dims } from './svg';
-import { backgroundDataUri } from './background';
+import { dimsFor, type Dims } from './svg';
+import { RenderWorker } from './renderPool';
 import type { Timetable } from '../types';
 
 const log = makeLog('render');
@@ -129,6 +127,11 @@ abstract class FfmpegPipeline {
 class TimetablePipeline extends FfmpegPipeline {
   private timer: NodeJS.Timeout | null = null;
   private dims: Dims;
+  // Rasterization happens on a worker thread so it never blocks the event loop
+  // (which would starve ffmpeg's stdin and the MediaMTX API). At most one render
+  // is in flight at a time — if the box can't keep up we just skip a tick.
+  private readonly worker = new RenderWorker();
+  private rendering = false;
 
   constructor(id: string, private readonly getTt: () => Timetable | undefined) {
     super(id);
@@ -142,7 +145,7 @@ class TimetablePipeline extends FfmpegPipeline {
 
   protected override onSpawned(): void {
     if (!this.timer) this.timer = setInterval(() => this.frame(), 1000);
-    // Draw an immediate first frame so the stream comes up quickly.
+    // Kick off an immediate first frame so the stream comes up quickly.
     setImmediate(() => this.frame());
   }
 
@@ -169,22 +172,33 @@ class TimetablePipeline extends FfmpegPipeline {
       this.spawnProc();
       return;
     }
+    if (this.rendering) return; // don't render faster than we can deliver
     const stdin = this.proc?.stdin;
     if (!stdin || !stdin.writable) return;
-    try {
-      const bg = tt.backgroundImage ? backgroundDataUri(tt.backgroundImage) : null;
-      const svg = renderDisplaySvg(tt, new Date(), { bg });
-      const img = new Resvg(svg, { font: fontOptions() }).render();
-      // Avoid unbounded buffering if ffmpeg stalls.
-      if (stdin.writableLength < img.pixels.length * 4) stdin.write(img.pixels);
-    } catch (err) {
-      log.error(`render ${this.id} failed`, err);
-    }
+
+    this.rendering = true;
+    this.worker
+      .raw(tt, Date.now())
+      .then((img) => {
+        this.rendering = false;
+        if (this.stopped) return;
+        const s = this.proc?.stdin;
+        if (!s || !s.writable) return;
+        // Drop a frame rendered at the previous size during a dims change.
+        if (img.width !== this.dims.width || img.height !== this.dims.height) return;
+        // Avoid unbounded buffering if ffmpeg stalls.
+        if (s.writableLength < img.pixels.length * 4) s.write(img.pixels);
+      })
+      .catch((err) => {
+        this.rendering = false;
+        if (!this.stopped) log.debug(`render ${this.id} failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
   }
 
   override stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    this.worker.dispose();
     super.stop();
   }
 }

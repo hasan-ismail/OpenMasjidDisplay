@@ -67,22 +67,21 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 }
 
 /* ── Modal ───────────────────────────────────────────────────────────────── */
-export function Modal({ open, onClose, title, children, footer, wide }: {
-  open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean;
+// `windowed` dialogs (settings / editors) get macOS-style window controls and can
+// be maximized; plain dialogs (confirmations like "Remove screen?") get a simple
+// header with a close button. Nothing minimizes to the dock.
+export function Modal({ open, onClose, title, children, footer, wide, windowed }: {
+  open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean; windowed?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [minimized, setMinimized] = useState(false);
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setMinimized(false);
-      setMaximized(false);
-    }
+    if (open) setMaximized(false);
   }, [open]);
 
   useEffect(() => {
-    if (!open || minimized) return;
+    if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -111,18 +110,9 @@ export function Modal({ open, onClose, title, children, footer, wide }: {
       window.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [open, minimized, onClose]);
+  }, [open, onClose]);
 
   if (!open) return null;
-
-  // Minimized → collapse to a restore chip near the dock ("minimize to dock").
-  if (minimized) {
-    return (
-      <button className="win-restore glass-raised" onClick={() => setMinimized(false)} title={`Restore ${title}`}>
-        <IconScreen size={15} /> <span>{title}</span>
-      </button>
-    );
-  }
 
   return (
     <div className="modal-backdrop">
@@ -135,14 +125,23 @@ export function Modal({ open, onClose, title, children, footer, wide }: {
         aria-modal="true"
         aria-label={title}
       >
-        <div className="modal-head">
-          <div className="traffic" role="group" aria-label="Window controls">
-            <button className="tl tl--close" onClick={onClose} aria-label="Close" title="Close" />
-            <button className="tl tl--min" onClick={() => setMinimized(true)} aria-label="Minimize" title="Minimize" />
-            <button className="tl tl--max" onClick={() => setMaximized((v) => !v)} aria-label={maximized ? 'Restore size' : 'Maximize'} title={maximized ? 'Restore size' : 'Maximize'} />
-          </div>
-          <h2 className="modal-title">{title}</h2>
-          <span className="spacer" />
+        <div className={`modal-head${windowed ? ' modal-head--win' : ''}`}>
+          {windowed ? (
+            <>
+              <div className="traffic" role="group" aria-label="Window controls">
+                <button className="tl tl--close" onClick={onClose} aria-label="Close" title="Close" />
+                <button className="tl tl--max" onClick={() => setMaximized((v) => !v)} aria-label={maximized ? 'Restore size' : 'Maximize'} title={maximized ? 'Restore size' : 'Maximize'} />
+              </div>
+              <h2 className="modal-title">{title}</h2>
+              <span className="spacer" />
+            </>
+          ) : (
+            <>
+              <h2 className="modal-title">{title}</h2>
+              <span className="spacer" />
+              <button className="icon-btn" onClick={onClose} aria-label="Close" title="Close"><IconX size={18} /></button>
+            </>
+          )}
         </div>
         {children}
         {footer && <div className="modal-foot">{footer}</div>}

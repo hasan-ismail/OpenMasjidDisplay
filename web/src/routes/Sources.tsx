@@ -132,6 +132,7 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
   return (
     <Modal
       open
+      windowed
       onClose={onClose}
       title={src ? 'Edit source' : 'Add a source'}
       footer={
