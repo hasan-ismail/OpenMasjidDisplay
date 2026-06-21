@@ -38,7 +38,8 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 
 export const api = {
-  session: () => req<{ authRequired: boolean; authed: boolean }>('GET', '/api/session'),
+  session: () => req<{ needsSetup: boolean; authed: boolean }>('GET', '/api/session'),
+  setup: (password: string) => req<{ ok: boolean }>('POST', '/api/setup', { password }),
   login: (password: string) => req<{ ok: boolean }>('POST', '/api/login', { password }),
   logout: () => req<{ ok: boolean }>('POST', '/api/logout'),
   state: () => req<AppState>('GET', '/api/state'),

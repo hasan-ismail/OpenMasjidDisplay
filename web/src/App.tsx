@@ -41,13 +41,14 @@ export function App() {
 }
 
 function Root() {
-  const { state, needAuth, loading, refetch, onAuthed } = useAppState();
+  const { state, needAuth, needsSetup, loading, refetch, onAuthed } = useAppState();
   const [tab, setTab] = useState<Tab>('screens');
 
   useEffect(() => {
     if (state) document.documentElement.dataset.theme = state.settings.theme;
   }, [state?.settings.theme, state]);
 
+  if (needsSetup) return <Setup onDone={onAuthed} />;
   if (needAuth) return <Login onDone={onAuthed} />;
   if (loading || !state) return <Splash />;
   return <Shell state={state} refetch={refetch} tab={tab} setTab={setTab} />;
@@ -187,6 +188,67 @@ function Login({ onDone }: { onDone: () => void }) {
         {error && <div className="form-error">{error}</div>}
         <button className="btn btn--primary btn--block" style={{ marginTop: '0.8rem' }} disabled={busy}>
           {busy ? <Spinner /> : 'Sign in'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function Setup({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (password.length < 4) {
+      setError('Please use at least 4 characters.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('The two passwords don’t match.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api.setup(password);
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not finish setup.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="auth-wrap">
+      <div className="scene" />
+      <form className="auth-card glass-raised" onSubmit={submit}>
+        <div className="auth-logo"><MasjidMark size={44} /></div>
+        <h1 className="page-title" style={{ textAlign: 'center' }}>Welcome</h1>
+        <p className="page-sub" style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+          Create a password for your control panel. You'll set everything else up inside.
+        </p>
+        <input
+          className="input"
+          type="password"
+          autoFocus
+          placeholder="Choose a password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{ marginBottom: '0.6rem' }}
+        />
+        <input
+          className="input"
+          type="password"
+          placeholder="Confirm password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+        />
+        {error && <div className="form-error">{error}</div>}
+        <button className="btn btn--primary btn--block" style={{ marginTop: '0.8rem' }} disabled={busy}>
+          {busy ? <Spinner /> : 'Create & continue'}
         </button>
       </form>
     </div>

@@ -8,6 +8,7 @@ import { RenderManager } from './render/renderer';
 import { Orchestrator } from './orchestrator';
 import { createApi } from './api';
 import { WsHub } from './ws';
+import { hasValidSession } from './auth';
 import { ping } from './mediamtx';
 
 const log = makeLog('main');
@@ -44,11 +45,11 @@ async function main(): Promise<void> {
       }
     });
   });
-  hub = new WsHub(server, store.secret);
+  hub = new WsHub(server, (req) => !!store.db.admin && hasValidSession(req, store.secret));
 
   server.listen(config.port, () => {
     log.info(`OpenMasjid Display control panel listening on :${config.port}`);
-    if (!config.adminPassword) log.warn('no control-panel password set — the panel is open on this network');
+    if (!store.db.admin) log.info('first run — open the control panel to create your admin account');
   });
 
   // Wait (briefly) for MediaMTX to come up, then reconcile.

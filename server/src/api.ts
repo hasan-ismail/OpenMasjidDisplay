@@ -9,9 +9,9 @@ import { makeLog } from './logger';
 import type { Store } from './store';
 import type { Orchestrator } from './orchestrator';
 import {
-  authEnabled,
-  checkPassword,
-  isAuthed,
+  hashPassword,
+  verifyPassword,
+  hasValidSession,
   makeToken,
   setCookieHeader,
   clearCookieHeader,
@@ -108,7 +108,7 @@ function statePayload(store: Store, orchestrator: Orchestrator) {
   const db = store.db;
   const s = db.settings;
   return {
-    authRequired: authEnabled(),
+    authRequired: true,
     settings: s,
     timetables: db.timetables,
     sources: db.sources,
@@ -128,6 +128,7 @@ function statePayload(store: Store, orchestrator: Orchestrator) {
 
 export function createApi(deps: Deps) {
   const { store, orchestrator } = deps;
+  const authed = (req: IncomingMessage) => !!store.db.admin && hasValidSession(req, store.secret);
 
   return async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -139,11 +140,25 @@ export function createApi(deps: Deps) {
       if (pathname === '/healthz') return sendJson(res, 200, { ok: true });
 
       if (pathname === '/api/session' && method === 'GET') {
-        return sendJson(res, 200, { authRequired: authEnabled(), authed: isAuthed(req, store.secret) });
+        return sendJson(res, 200, { needsSetup: !store.db.admin, authed: authed(req) });
+      }
+      if (pathname === '/api/setup' && method === 'POST') {
+        const body = await readBody(req);
+        if (store.db.admin) return sendJson(res, 409, { error: 'The control panel is already set up.' });
+        const pw = String(body.password ?? '');
+        if (pw.length < 4) return sendJson(res, 400, { error: 'Please choose a password of at least 4 characters.' });
+        const { hash, salt } = hashPassword(pw);
+        const name = String(body.name ?? '').slice(0, 80).trim();
+        store.update((db) => {
+          db.admin = { hash, salt, name: name || undefined, createdAt: new Date().toISOString() };
+        });
+        res.setHeader('set-cookie', setCookieHeader(makeToken(store.secret)));
+        return sendJson(res, 200, { ok: true });
       }
       if (pathname === '/api/login' && method === 'POST') {
         const body = await readBody(req);
-        if (!authEnabled() || checkPassword(String(body.password ?? ''))) {
+        if (!store.db.admin) return sendJson(res, 400, { error: 'This panel has not been set up yet.' });
+        if (verifyPassword(String(body.password ?? ''), store.db.admin)) {
           res.setHeader('set-cookie', setCookieHeader(makeToken(store.secret)));
           return sendJson(res, 200, { ok: true });
         }
@@ -161,7 +176,7 @@ export function createApi(deps: Deps) {
       }
 
       // ---- Everything else requires auth ----------------------------------
-      if (!isAuthed(req, store.secret)) return sendJson(res, 401, { error: 'Please sign in.' });
+      if (!authed(req)) return sendJson(res, 401, { error: 'Please sign in.' });
 
       if (pathname === '/api/state' && method === 'GET') {
         return sendJson(res, 200, statePayload(store, orchestrator));

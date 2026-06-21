@@ -2,27 +2,19 @@
 #   • app       — the control panel (web UI + API) and the timetable video renderer
 #   • mediamtx   — the RTSP server every screen's decoder connects to
 # Both are least-privilege: no privileged mode, host networking, devices or sockets.
+#
+# There is nothing to configure at install time: install it, open the control
+# panel, create your admin password, and set everything up inside the app (saved
+# to the data volume).
 services:
   app:
-    image: ghcr.io/hasan-ismail/openmasjiddisplay:0.1.0
+    image: ghcr.io/hasan-ismail/openmasjiddisplay:0.2.0
     restart: unless-stopped
     depends_on:
       - mediamtx
     environment:
-      # Collected at install time (written to .env by OpenMasjidOS).
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      RTSP_PUBLIC_HOST: ${RTSP_PUBLIC_HOST}
-      RTSP_PUBLIC_PORT: ${RTSP_PUBLIC_PORT}
-      DISPLAY_QUALITY: ${DISPLAY_QUALITY}
-      MASJID_NAME: ${MASJID_NAME}
-      LATITUDE: ${LATITUDE}
-      LONGITUDE: ${LONGITUDE}
-      CALC_METHOD: ${CALC_METHOD}
-      ASR_MADHAB: ${ASR_MADHAB}
-      TIMEZONE: ${TIMEZONE}
-      TIME_FORMAT: ${TIME_FORMAT}
-      LANGUAGE: ${LANGUAGE}
-      # Internal wiring (how the app reaches the RTSP server on the private network).
+      # Internal wiring only (how the app reaches the RTSP server on the private
+      # network). All masjid configuration is done in the app and stored in /data.
       PORT: "8080"
       DATA_DIR: /data
       MEDIAMTX_API_URL: http://mediamtx:9997
@@ -30,9 +22,9 @@ services:
       MEDIAMTX_RTSP_LOOPBACK: rtsp://127.0.0.1:8554
     ports:
       # host:container — OpenMasjidOS offers "Open" on the lowest published port,
-      # so the control panel (8099) sits below the RTSP port (8554). The platform
+      # so the control panel (7860) sits below the RTSP port (8554). The platform
       # picks a different free host port automatically if one is taken.
-      - "8099:8080"
+      - "7860:8080"
     volumes:
       - data:/data
 

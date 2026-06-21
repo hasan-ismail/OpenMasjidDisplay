@@ -1,7 +1,6 @@
 /** WebSocket hub that pushes live status to connected control panels. */
-import type { Server } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { isAuthed } from './auth';
 import { makeLog } from './logger';
 
 const log = makeLog('ws');
@@ -9,7 +8,7 @@ const log = makeLog('ws');
 export class WsHub {
   private readonly wss: WebSocketServer;
 
-  constructor(server: Server, secret: Buffer) {
+  constructor(server: Server, authed: (req: IncomingMessage) => boolean) {
     this.wss = new WebSocketServer({ noServer: true });
     server.on('upgrade', (req, socket, head) => {
       const path = (req.url ?? '').split('?')[0];
@@ -17,7 +16,7 @@ export class WsHub {
         socket.destroy();
         return;
       }
-      if (!isAuthed(req, secret)) {
+      if (!authed(req)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;

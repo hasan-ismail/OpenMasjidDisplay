@@ -16,8 +16,6 @@ export const config = {
   port: intEnv('PORT', 8080),
   dataDir: env('DATA_DIR', path.resolve(process.cwd(), 'data')),
   publicDir: env('PUBLIC_DIR', path.resolve(__dirname, '..', 'public')),
-  /** blank => the control panel is open (LAN trust); the UI warns about it. */
-  adminPassword: env('ADMIN_PASSWORD', ''),
 
   /** How the app talks to MediaMTX on the private compose network. */
   mediamtxApiUrl: env('MEDIAMTX_API_URL', 'http://127.0.0.1:9997'),

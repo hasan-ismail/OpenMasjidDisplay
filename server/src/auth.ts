@@ -1,14 +1,27 @@
-/** Single-admin auth: a signed, HTTP-only session cookie. When no password is
- *  configured the control panel is open (the UI shows a warning). */
+/** Single-admin auth. The admin account is created in-app on first run (no
+ *  install-time password). Password is stored as a scrypt hash in the data
+ *  volume; the session is a signed, HTTP-only cookie. */
 import crypto from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
-import { config } from './config';
+import type { AdminAccount } from './types';
 
 const COOKIE = 'omd_session';
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 
-export function authEnabled(): boolean {
-  return config.adminPassword.length > 0;
+export function hashPassword(password: string): { hash: string; salt: string } {
+  const salt = crypto.randomBytes(16);
+  const dk = crypto.scryptSync(password, salt, 32);
+  return { hash: dk.toString('hex'), salt: salt.toString('hex') };
+}
+
+export function verifyPassword(password: string, account: AdminAccount): boolean {
+  try {
+    const dk = crypto.scryptSync(password, Buffer.from(account.salt, 'hex'), 32);
+    const stored = Buffer.from(account.hash, 'hex');
+    return stored.length === dk.length && crypto.timingSafeEqual(stored, dk);
+  } catch {
+    return false;
+  }
 }
 
 function hmac(secret: Buffer, payload: string): string {
@@ -20,7 +33,7 @@ export function makeToken(secret: Buffer): string {
   return `${payload}.${hmac(secret, payload)}`;
 }
 
-function verify(secret: Buffer, token: string): boolean {
+function verifyToken(secret: Buffer, token: string): boolean {
   const dot = token.lastIndexOf('.');
   if (dot < 0) return false;
   const payload = token.slice(0, dot);
@@ -37,18 +50,6 @@ function verify(secret: Buffer, token: string): boolean {
   }
 }
 
-export function checkPassword(input: string): boolean {
-  const a = Buffer.from(String(input ?? ''));
-  const b = Buffer.from(config.adminPassword);
-  // Constant-time compare (lengths may differ; timingSafeEqual needs equal len).
-  const max = Math.max(a.length, b.length, 1);
-  const pa = Buffer.alloc(max);
-  const pb = Buffer.alloc(max);
-  a.copy(pa);
-  b.copy(pb);
-  return crypto.timingSafeEqual(pa, pb) && a.length === b.length;
-}
-
 function parseCookies(header?: string): Record<string, string> {
   const out: Record<string, string> = {};
   if (!header) return out;
@@ -60,10 +61,11 @@ function parseCookies(header?: string): Record<string, string> {
   return out;
 }
 
-export function isAuthed(req: IncomingMessage, secret: Buffer): boolean {
-  if (!authEnabled()) return true;
+/** A valid, unexpired session cookie. (The caller separately checks that an
+ *  admin account exists — before setup, nobody is authed.) */
+export function hasValidSession(req: IncomingMessage, secret: Buffer): boolean {
   const token = parseCookies(req.headers.cookie)[COOKIE];
-  return !!token && verify(secret, token);
+  return !!token && verifyToken(secret, token);
 }
 
 export function setCookieHeader(token: string): string {

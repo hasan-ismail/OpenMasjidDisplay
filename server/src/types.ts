@@ -118,8 +118,18 @@ export interface Settings {
   theme: 'dark' | 'light';
 }
 
+/** The single control-panel admin, created in-app on first run. */
+export interface AdminAccount {
+  hash: string;
+  salt: string;
+  name?: string;
+  createdAt: string;
+}
+
 export interface DB {
   version: number;
+  /** null until first-run setup creates the admin. */
+  admin: AdminAccount | null;
   settings: Settings;
   timetables: Timetable[];
   sources: Source[];

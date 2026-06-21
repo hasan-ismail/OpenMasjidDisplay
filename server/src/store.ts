@@ -68,6 +68,7 @@ function seededTimetable(): Timetable {
 function freshDB(): DB {
   return {
     version: DB_VERSION,
+    admin: null,
     settings: {
       rtspPublicHost: config.seed.rtspPublicHost,
       rtspPublicPort: config.seed.rtspPublicPort,

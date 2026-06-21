@@ -5,6 +5,7 @@ import type { AppState, TvStatus } from './types';
 export interface UseApp {
   state: AppState | null;
   needAuth: boolean;
+  needsSetup: boolean;
   loading: boolean;
   refetch: () => Promise<void>;
   onAuthed: () => void;
@@ -13,6 +14,7 @@ export interface UseApp {
 export function useAppState(): UseApp {
   const [state, setState] = useState<AppState | null>(null);
   const [needAuth, setNeedAuth] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -28,8 +30,14 @@ export function useAppState(): UseApp {
   }, []);
 
   useEffect(() => {
-    setUnauthHandler(() => {
-      setNeedAuth(true);
+    setUnauthHandler(async () => {
+      try {
+        const s = await api.session();
+        if (s.needsSetup) setNeedsSetup(true);
+        else setNeedAuth(true);
+      } catch {
+        setNeedAuth(true);
+      }
       setLoading(false);
     });
     void refetch();
@@ -37,7 +45,7 @@ export function useAppState(): UseApp {
 
   // Live updates over WebSocket.
   useEffect(() => {
-    if (needAuth) return;
+    if (needAuth || needsSetup) return;
     let closed = false;
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -76,13 +84,14 @@ export function useAppState(): UseApp {
         /* ignore */
       }
     };
-  }, [needAuth, refetch]);
+  }, [needAuth, needsSetup, refetch]);
 
   const onAuthed = useCallback(() => {
     setNeedAuth(false);
+    setNeedsSetup(false);
     setLoading(true);
     void refetch();
   }, [refetch]);
 
-  return { state, needAuth, loading, refetch, onAuthed };
+  return { state, needAuth, needsSetup, loading, refetch, onAuthed };
 }

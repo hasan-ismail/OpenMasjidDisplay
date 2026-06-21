@@ -59,7 +59,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 ## Install (through OpenMasjidOS)
 
 This app installs from the OpenMasjidOS **App Store**. Once it's in the catalog, open your dashboard → App
-Store → **OpenMasjid Display** → Install, and fill in the few settings below.
+Store → **OpenMasjid Display** → Install. **There's nothing to fill in** — it's a one-click install.
 
 To add it to the catalog, open a PR to [OpenMasjidAPPS](https://github.com/hasan-ismail/OpenMasjidAPPS)
 adding this entry to `registry.yaml`:
@@ -67,28 +67,22 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.1.0
+    ref: v0.2.0
 ```
 
-### Install settings
+### No install-time settings
 
-| Setting | What it's for |
-|---|---|
-| **Control-panel password** | Protects the control panel. Leave blank only on a trusted network. |
-| **This server's network address** | The IP your screens' decoders connect to, e.g. `192.168.1.50`. Can be set later. |
-| **Video network port** | RTSP port (default `8554`). |
-| **Picture quality** | `720p` (best for a Raspberry Pi) or `1080p`. |
-| **Masjid name, location, method, …** | Seed your **first** timetable. Everything is editable later in the panel. |
-
-Everything else — extra timetables, cameras, HDMI sources and schedules — is configured inside the control
-panel and saved to the app's data volume.
+By design, the install dialog is empty — you set everything up **inside the app** on first run (your
+admin password, masjid details, server address, screens, cameras, schedules), all saved to the data volume.
+This keeps install one-click and lets you change anything later without reinstalling.
 
 ## After installing
 
-1. Open the control panel and go to **Settings** → set this server's network address → **Save**.
-2. On the **Screens** page, add a screen and **copy its link**.
-3. In your TV's RTSP decoder, paste the link and set the transport to **TCP**.
-4. Pick what each screen shows. Done.
+1. Click **Open** (the control panel, default host port `7860`) and **create your control-panel password**.
+2. Go to **Settings** → set this server's network address (your LAN IP) → **Save**.
+3. On the **Screens** page, add a screen and **copy its link**.
+4. In your TV's RTSP decoder, paste the link and set the transport to **TCP**.
+5. Pick what each screen shows (a timetable, a camera, an HDMI source). Done.
 
 Full decoder guidance and troubleshooting: [docs/RTSP_SETUP.md](docs/RTSP_SETUP.md).
 
