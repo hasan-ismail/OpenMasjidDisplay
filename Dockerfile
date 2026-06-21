@@ -65,6 +65,8 @@ COPY --from=mediamtx /mediamtx /usr/local/bin/mediamtx
 COPY --from=mediamtx /mediamtx.yml /app/mediamtx.yml
 
 ENV PORT=8080 \
+    VOLUNTEER_PORT=8081 \
+    VOLUNTEER_PUBLIC_PORT=7861 \
     DATA_DIR=/data \
     PUBLIC_DIR=/app/public \
     MTX_API=yes \
@@ -74,7 +76,7 @@ ENV PORT=8080 \
     MTX_HLS=no \
     MTX_WEBRTC=no \
     MTX_SRT=no
-EXPOSE 8080 8554
+EXPOSE 8080 8081 8554
 VOLUME ["/data"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]

@@ -200,5 +200,6 @@ export function normSettings(input: unknown, base: Settings): Settings {
   return {
     defaultQuality: oneOf(o.defaultQuality, ['720p', '1080p'] as const, base.defaultQuality) as Quality,
     scheduleTimezone: str(o.scheduleTimezone, base.scheduleTimezone, 64).trim(),
+    volunteerEnabled: o.volunteerEnabled === undefined ? base.volunteerEnabled ?? false : bool(o.volunteerEnabled, false),
   };
 }

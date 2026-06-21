@@ -7,6 +7,7 @@ import { Store } from './store';
 import { RenderManager } from './render/renderer';
 import { Orchestrator } from './orchestrator';
 import { createApi } from './api';
+import { createVolunteerApi } from './volunteerApi';
 import { WsHub } from './ws';
 import { hasValidSession } from './auth';
 import { ping } from './mediamtx';
@@ -57,6 +58,22 @@ async function main(): Promise<void> {
     if (!store.db.admin) log.info('first run — open the control panel to create your admin account');
   });
 
+  // The simple mobile volunteer page runs on its own port. It always listens, but
+  // the API stays inert until an admin enables it and sets a PIN (see Settings).
+  const volunteerHandler = createVolunteerApi({ store, orchestrator });
+  const volunteerServer = http.createServer((req, res) => {
+    volunteerHandler(req, res).catch((err) => {
+      log.error('volunteer request handler crashed', err);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end('{"error":"Internal error."}');
+      }
+    });
+  });
+  volunteerServer.listen(config.volunteerPort, () => {
+    log.info(`volunteer page listening on :${config.volunteerPort}`);
+  });
+
   // Wait (briefly) for MediaMTX to come up, then reconcile.
   void (async () => {
     for (let i = 0; i < 60; i++) {
@@ -77,6 +94,7 @@ async function main(): Promise<void> {
     render.stopAll();
     mediamtx.stop();
     server.close();
+    volunteerServer.close();
     setTimeout(() => process.exit(0), 500);
   };
   process.on('SIGTERM', shutdown);

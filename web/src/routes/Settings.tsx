@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import type { AppState, Settings } from '../types';
-import { Field, IconCheck, useToast } from '../ui';
+import { Field, Toggle, IconCheck, useToast } from '../ui';
 import { usePrefs, prefsStore, WALLPAPERS, fetchOmosAppearance } from '../prefs';
 
 interface Props {
@@ -133,6 +133,8 @@ export function SettingsPage({ state, refetch }: Props) {
         )}
       </div>
 
+      <VolunteerPanel state={state} refetch={refetch} />
+
       <div className="panel glass">
         <h3 className="section-title" style={{ marginTop: 0 }}>Connecting a screen</h3>
         <p className="muted" style={{ marginBottom: '1rem' }}>
@@ -146,6 +148,73 @@ export function SettingsPage({ state, refetch }: Props) {
       </div>
 
       <button className="btn btn--primary" onClick={save} disabled={busy}><IconCheck size={16} /> Save settings</button>
+    </div>
+  );
+}
+
+/** Turn the simple mobile volunteer page on/off and set its 4-digit PIN. */
+function VolunteerPanel({ state, refetch }: Props) {
+  const toast = useToast();
+  const [enabled, setEnabled] = useState(state.settings.volunteerEnabled);
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const pinSet = state.volunteer.pinSet;
+  const volUrl = `http://${window.location.hostname}:${state.volunteer.port}`;
+
+  const save = async (nextEnabled: boolean) => {
+    setBusy(true);
+    try {
+      // Only send the PIN if the admin typed a new one.
+      const pinArg = pin.trim() === '' ? undefined : pin.trim();
+      await api.saveVolunteerConfig(nextEnabled, pinArg);
+      setEnabled(nextEnabled);
+      setPin('');
+      await refetch();
+      toast('Volunteer page updated.');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not save.', 'error');
+      setEnabled(state.settings.volunteerEnabled); // revert the toggle on failure
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="panel glass">
+      <h3 className="section-title" style={{ marginTop: 0 }}>Volunteer page (mobile)</h3>
+      <p className="muted" style={{ marginBottom: '1rem' }}>
+        A bone-simple phone page for volunteers: unlock with a short PIN, see every screen, and switch what
+        each one shows with a tap. It runs on its own address so you can share just that.
+      </p>
+
+      <div className="toggle-row row-between" style={{ marginBlockEnd: '0.9rem' }}>
+        <span className="label" style={{ margin: 0 }}>
+          Enable the volunteer page
+          {!pinSet && <span className="hint"> — set a PIN first</span>}
+        </span>
+        <Toggle checked={enabled} onChange={(v) => save(v)} label="Enable the volunteer page" />
+      </div>
+
+      <div className="grid2">
+        <Field label={pinSet ? 'Change PIN (4–8 digits)' : 'Set a PIN (4–8 digits)'} hint="Leave blank to keep the current PIN.">
+          <input
+            className="input"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={8}
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            placeholder={pinSet ? '••••' : 'e.g. 1234'}
+          />
+        </Field>
+        <Field label="Volunteer page address" hint="Open this on a phone (must be on the same network).">
+          <input className="input" readOnly value={volUrl} onFocus={(e) => e.currentTarget.select()} />
+        </Field>
+      </div>
+
+      <button className="btn btn--primary" style={{ marginBlockStart: '0.4rem' }} onClick={() => save(enabled)} disabled={busy || (pin.trim() === '' && !pinSet)}>
+        <IconCheck size={16} /> {pin.trim() ? 'Save PIN' : 'Save'}
+      </button>
     </div>
   );
 }

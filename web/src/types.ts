@@ -97,6 +97,7 @@ export interface ScheduleRule {
 export interface Settings {
   defaultQuality: Quality;
   scheduleTimezone: string;
+  volunteerEnabled: boolean;
 }
 
 export interface TvStatus {
@@ -136,5 +137,7 @@ export interface AppState {
   rtsp: { port: number; transport: string };
   /** OpenMasjidOS base URL when running under the platform, else '' (for A2 sync). */
   omosBase: string;
+  /** volunteer mode: whether a PIN is set, and the host port the page is shown on */
+  volunteer: { pinSet: boolean; port: number };
   serverNow: number;
 }

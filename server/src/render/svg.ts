@@ -44,7 +44,6 @@ const FONT_SANS = 'Noto Sans, Noto Sans Arabic, DejaVu Sans, sans-serif';
 const GLASS = 'rgba(255,255,255,0.06)';
 const GLASS_RAISED = 'rgba(255,255,255,0.10)';
 const HAIR = 'rgba(255,255,255,0.16)';
-const HAIR_SOFT = 'rgba(255,255,255,0.09)';
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -511,7 +510,8 @@ function lightBeams(cel: Celestial, W: number, H: number): string {
 /** Prayer card — a tall stacked tile, or a wide row when much wider than tall. */
 function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palette, L: Record<string, string>, timeFormat: string): string {
   const cardR = Math.min(w, h) * 0.14;
-  const fill = r.active ? hexToRgba(p.primary, 0.2) : r.minor ? HAIR_SOFT : GLASS;
+  // Sunrise (minor) used to be dimmer; render it like the others so it matches.
+  const fill = r.active ? hexToRgba(p.primary, 0.2) : GLASS;
   const stroke = r.active ? p.primary : HAIR;
   const nameColor = r.active ? p.primarySoft : r.next ? p.goldSoft : p.textDim;
   const name = L[r.label] ?? r.label;
@@ -527,8 +527,9 @@ function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palet
     const rightX = x + w - pad;
     out.push(text(x + pad, y + h * 0.6, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', letter: 0.5, editId: `label.${r.label}` }));
     if (r.iqamah != null) {
-      out.push(text(rightX, y + h * 0.46, fmtShort(r.adhan, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
-      out.push(text(rightX, y + h * 0.82, `${L.iqamah} ${fmtShort(r.iqamah, timeFormat)}`, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'end' }));
+      // Iqamah is what the congregation cares about → show it big; Adhan small.
+      out.push(text(rightX, y + h * 0.46, fmtShort(r.iqamah, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+      out.push(text(rightX, y + h * 0.82, `${L.athan} ${fmtShort(r.adhan, timeFormat)}`, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'end' }));
     } else {
       out.push(text(rightX, y + h * 0.64, fmtShort(r.adhan, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
     }
@@ -537,18 +538,20 @@ function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palet
 
   const center = x + w / 2;
   if (r.active) out.push(rect(x + cardR, y + Math.max(2, h * 0.05), w - 2 * cardR, Math.max(2, h * 0.025), 2, p.primarySoft));
-  const timeStr = fmtShort(r.adhan, timeFormat);
-  const iqStr = r.iqamah != null ? `${L.iqamah} ${fmtShort(r.iqamah, timeFormat)}` : '';
+  // The big number is the Iqamah (jamā'ah) time — what people line up for; the Adhan
+  // is shown small underneath. Sunrise (no iqamah) just shows its single time big.
+  const primaryStr = fmtShort(r.iqamah != null ? r.iqamah : r.adhan, timeFormat);
+  const secondaryStr = r.iqamah != null ? `${L.athan} ${fmtShort(r.adhan, timeFormat)}` : '';
   // Fit each line to the card width so times never spill into a neighbouring card.
   const fitW = (s: string, max: number, cap: number, floor: number) =>
     clamp(Math.min(cap, max / Math.max(1, s.length * 0.6)), floor, cap);
   const nameSize = fitW(name, w * 0.9, clamp(Math.min(w * 0.16, h * 0.2), 12, 30), 11);
-  const timeSize = fitW(timeStr, w * 0.92, clamp(Math.min(w * 0.3, h * 0.42), 20, 64), 15);
-  const iqSize = iqStr ? fitW(iqStr, w * 0.94, clamp(Math.min(w * 0.15, h * 0.16), 10, 24), 9) : 0;
+  const timeSize = fitW(primaryStr, w * 0.92, clamp(Math.min(w * 0.3, h * 0.42), 20, 64), 15);
+  const secSize = secondaryStr ? fitW(secondaryStr, w * 0.94, clamp(Math.min(w * 0.15, h * 0.16), 10, 24), 9) : 0;
   out.push(text(center, y + h * 0.24 + nameSize * 0.4, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5, editId: `label.${r.label}` }));
-  out.push(text(center, y + h * (r.iqamah != null ? 0.58 : 0.64), timeStr, { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
-  if (iqStr) {
-    out.push(text(center, y + h * 0.87, iqStr, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
+  out.push(text(center, y + h * (secondaryStr ? 0.58 : 0.64), primaryStr, { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+  if (secondaryStr) {
+    out.push(text(center, y + h * 0.87, secondaryStr, { size: secSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
   }
   if (r.next) out.push(`<circle cx="${center.toFixed(1)}" cy="${(y + h - h * 0.06).toFixed(1)}" r="${Math.max(2, w * 0.018).toFixed(1)}" fill="${p.gold}"/>`);
   return out.join('');
@@ -682,8 +685,9 @@ function splitView(
     const nameSize = clamp(rowH * 0.34, 12, 30);
     const timeSize = clamp(rowH * 0.34, 12, 30);
     out.push(text(leftX + pad, midY, L[r.label] ?? r.label, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', editId: `label.${r.label}` }));
-    out.push(text(colAdhan, midY, fmtShort(r.adhan, tt.timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
-    out.push(text(colIq, midY, r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : '—', { size: timeSize, fill: r.iqamah != null ? p.goldSoft : p.textFaint, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+    // Adhan is the muted column; Iqamah is emphasised (bright) — that's the one people line up for.
+    out.push(text(colAdhan, midY, fmtShort(r.adhan, tt.timeFormat), { size: timeSize * 0.92, fill: p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+    out.push(text(colIq, midY, r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : '—', { size: timeSize, fill: r.iqamah != null ? p.text : p.textFaint, family: FONT_DISPLAY, weight: 700, anchor: 'end' }));
   });
 
   // ── Right: big countdown hero ──

@@ -125,6 +125,12 @@ function statePayload(store: Store, orchestrator: Orchestrator) {
       transport: 'tcp',
     },
     omosBase: config.omosBaseUrl,
+    // Volunteer mode (the simple mobile page on its own port). We never send the
+    // PIN itself — only whether one is set, and the host port to show in the URL.
+    volunteer: {
+      pinSet: !!store.db.volunteerAuth,
+      port: config.volunteerPublicPort,
+    },
     serverNow: Date.now(),
   };
 }
@@ -216,6 +222,27 @@ export function createApi(deps: Deps) {
           db.settings = normSettings(body, db.settings);
         });
         return sendJson(res, 200, store.db.settings);
+      }
+
+      // ---- Volunteer mode config (enable + 4-digit PIN) -------------------
+      if (pathname === '/api/volunteer-config' && method === 'PUT') {
+        const body = await readBody(req);
+        const enabled = body.enabled === true;
+        const pinRaw = body.pin == null ? undefined : String(body.pin).trim();
+        // A change to the PIN: '' clears it, 4-8 digits sets it, anything else is rejected.
+        if (pinRaw !== undefined && pinRaw !== '' && !/^\d{4,8}$/.test(pinRaw)) {
+          return sendJson(res, 400, { error: 'The PIN must be 4 to 8 digits.' });
+        }
+        const willHavePin = pinRaw === '' ? false : pinRaw ? true : !!store.db.volunteerAuth;
+        if (enabled && !willHavePin) {
+          return sendJson(res, 400, { error: 'Choose a 4-digit PIN before turning on the volunteer page.' });
+        }
+        store.update((db) => {
+          if (pinRaw === '') db.volunteerAuth = null;
+          else if (pinRaw) db.volunteerAuth = hashPassword(pinRaw);
+          db.settings.volunteerEnabled = enabled;
+        });
+        return sendJson(res, 200, { ok: true, enabled, pinSet: !!store.db.volunteerAuth });
       }
 
       // ---- Timetables ------------------------------------------------------

@@ -52,6 +52,8 @@ export const api = {
   state: () => req<AppState>('GET', '/api/state'),
 
   saveSettings: (s: Partial<Settings>) => req<Settings>('PUT', '/api/settings', s),
+  saveVolunteerConfig: (enabled: boolean, pin?: string) =>
+    req<{ ok: boolean; enabled: boolean; pinSet: boolean }>('PUT', '/api/volunteer-config', { enabled, pin }),
 
   createTimetable: (b: Partial<Timetable>) => req<Timetable>('POST', '/api/timetables', b),
   updateTimetable: (id: string, b: Partial<Timetable>) => req<Timetable>('PUT', `/api/timetables/${id}`, b),
@@ -102,4 +104,26 @@ export const api = {
   createSchedule: (b: Partial<ScheduleRule>) => req<ScheduleRule>('POST', '/api/schedules', b),
   updateSchedule: (id: string, b: Partial<ScheduleRule>) => req<ScheduleRule>('PUT', `/api/schedules/${id}`, b),
   deleteSchedule: (id: string) => req('DELETE', `/api/schedules/${id}`),
+};
+
+/** The simple mobile volunteer page (served on its own port; PIN-gated). */
+export interface VolunteerTv {
+  id: string;
+  name: string;
+  room: string;
+  now: { kind: 'timetable' | 'source' | 'off'; id?: string; label: string };
+  overridden: boolean;
+  ready: boolean;
+}
+export interface VolunteerData {
+  tvs: VolunteerTv[];
+  options: { timetables: { id: string; name: string }[]; sources: { id: string; name: string; type: string }[] };
+}
+export const volApi = {
+  session: () => req<{ enabled: boolean; authed: boolean }>('GET', '/api/volunteer/session'),
+  login: (pin: string) => req<{ ok: boolean }>('POST', '/api/volunteer/login', { pin }),
+  logout: () => req<{ ok: boolean }>('POST', '/api/volunteer/logout'),
+  tvs: () => req<VolunteerData>('GET', '/api/volunteer/tvs'),
+  set: (id: string, content: ContentRef) => req<{ ok: boolean }>('POST', `/api/volunteer/tvs/${id}/set`, { content }),
+  resume: (id: string) => req<{ ok: boolean }>('POST', `/api/volunteer/tvs/${id}/resume`),
 };

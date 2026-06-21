@@ -350,3 +350,47 @@ h1, h2, h3, p { margin: 0; }
   .grid2 { grid-template-columns: 1fr; }
   .screens-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Volunteer page (mobile) ─────────────────────────────────────────────── */
+.vol { min-height: 100vh; min-height: 100dvh; }
+.vol-center { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 1.25rem; }
+.vol-card { width: min(22rem, 100%); padding: 1.6rem; }
+.vol-wrap { width: 100%; max-width: 34rem; margin-inline: auto; padding: 0.75rem 0.9rem 3rem; position: relative; z-index: 1; }
+.vol-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 0.5rem; padding-block: 0.85rem; }
+.vol-list { display: flex; flex-direction: column; gap: 0.7rem; }
+.vol-tv { overflow: hidden; }
+.vol-tv__head { display: flex; align-items: center; gap: 0.7rem; width: 100%; padding: 0.95rem 1rem; border: 0; background: transparent; color: var(--color-ink); cursor: pointer; text-align: start; }
+.vol-tv__info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.vol-tv__name { font-weight: 700; font-size: 1.02rem; }
+.vol-tv__now { color: var(--color-ink-muted); font-size: 0.86rem; margin-block-start: 0.1rem; }
+.vol-tv__chev { color: var(--color-ink-muted); font-size: 0.9rem; }
+.vol-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--color-ink-muted); flex-shrink: 0; opacity: 0.5; }
+.vol-dot.is-live { background: var(--color-success); opacity: 1; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent); }
+.vol-opts { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.2rem 0.7rem 0.85rem; }
+.vol-opt {
+  display: flex; align-items: center; gap: 0.6rem; width: 100%; text-align: start;
+  padding: 0.7rem 0.85rem; border: 0; border-radius: var(--radius-button); cursor: pointer;
+  background: var(--glass-bg-inset, rgba(255,255,255,0.04)); color: var(--color-ink); font-weight: 600; font-size: 0.95rem;
+}
+.vol-opt svg { color: var(--color-ink-muted); flex-shrink: 0; }
+.vol-opt span { flex: 1; }
+.vol-opt:hover { background: var(--color-surface-hover); }
+.vol-opt.is-active { color: var(--color-primary); background: var(--color-primary-subtle); }
+.vol-opt.is-active svg { color: var(--color-primary); }
+
+/* PIN pad */
+.pin-dots { display: flex; justify-content: center; gap: 0.55rem; margin-block: 0.4rem 1.1rem; }
+.pin-dot { width: 0.8rem; height: 0.8rem; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--color-border); }
+.pin-dot.is-on { background: var(--color-primary); box-shadow: none; }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+.pin-key {
+  height: 3.6rem; border: 0; border-radius: var(--radius-button); cursor: pointer;
+  font-size: 1.4rem; font-weight: 600; color: var(--color-ink);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform var(--dur-micro) var(--ease-settle);
+}
+.pin-key:active { transform: scale(0.93); }
+.pin-key--ghost { background: transparent; color: var(--color-ink-muted); font-size: 1.5rem; }
+.pin-key--ok { background: var(--color-primary); color: #fff; }
+.pin-key--ok:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .pin-key:active { transform: none; } }

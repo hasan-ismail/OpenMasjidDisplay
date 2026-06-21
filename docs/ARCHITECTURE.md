@@ -95,6 +95,18 @@ costs the video pipeline nothing (it never passes a sink).
 
 Reconciles are coalesced so overlapping triggers collapse into one trailing run.
 
+## Volunteer page (separate port)
+
+A second `http.Server` listens on `VOLUNTEER_PORT` (container 8081 → host 7861) with its
+own minimal handler (`volunteerApi.ts`). It serves the *same* SPA bundle but injects
+`window.__OMD_VOLUNTEER__=true` into the served `index.html`, so the app boots into the
+mobile `VolunteerApp` instead of the admin dashboard. The handler exposes only
+`/api/volunteer/{session,login,logout,tvs,tvs/:id/set,tvs/:id/resume}` — never the admin
+endpoints — and is gated by a separate short-lived cookie (`omd_vol`) and a hashed PIN
+(`db.volunteerAuth`). It stays inert (403) until an admin enables it and sets a PIN in
+Settings. Keeping it on its own port (above the control panel's, so OpenMasjidOS "Open"
+still lands on the panel) lets a masjid share just that URL and firewall it separately.
+
 ## OpenMasjidOS integration (optional)
 
 When installed through OpenMasjidOS the platform injects `OPENMASJID_BASE_URL` and `OPENMASJID_APP_ID`.

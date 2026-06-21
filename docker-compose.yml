@@ -10,16 +10,20 @@
 # Screens find this server automatically from the address you open the panel with.
 services:
   app:
-    image: ghcr.io/hasan-ismail/openmasjiddisplay:0.7.2
+    image: ghcr.io/hasan-ismail/openmasjiddisplay:0.8.0
     restart: unless-stopped
     environment:
       PORT: "8080"
+      VOLUNTEER_PORT: "8081"
+      VOLUNTEER_PUBLIC_PORT: "7861"
       DATA_DIR: /data
     ports:
       # host:container. OpenMasjidOS offers "Open" on the LOWEST published port,
       # so the control panel (7860) must stay below the RTSP port (8554). The
       # platform picks a different free host port automatically if one is taken.
       - "7860:8080"
+      # The simple mobile volunteer page (off by default; turn it on in Settings).
+      - "7861:8081"
       # RTSP video — each screen's decoder connects here (TCP).
       - "8554:8554"
     volumes:

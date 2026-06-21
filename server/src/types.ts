@@ -140,6 +140,14 @@ export interface Settings {
   defaultQuality: Quality;
   /** IANA timezone used to evaluate schedules ('' = server zone) */
   scheduleTimezone: string;
+  /** allow the simple mobile volunteer page (PIN-gated) on its own port */
+  volunteerEnabled: boolean;
+}
+
+/** A hashed credential (scrypt). Used for the admin password and the volunteer PIN. */
+export interface Credential {
+  hash: string;
+  salt: string;
 }
 
 /** The single control-panel admin, created in-app on first run. */
@@ -154,6 +162,8 @@ export interface DB {
   version: number;
   /** null until first-run setup creates the admin. */
   admin: AdminAccount | null;
+  /** the volunteer PIN (hashed), or null if none set */
+  volunteerAuth?: Credential | null;
   settings: Settings;
   timetables: Timetable[];
   sources: Source[];

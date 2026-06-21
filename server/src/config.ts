@@ -17,6 +17,13 @@ export const config = {
   dataDir: env('DATA_DIR', path.resolve(process.cwd(), 'data')),
   publicDir: env('PUBLIC_DIR', path.resolve(__dirname, '..', 'public')),
 
+  /** The simple mobile "volunteer" page runs on its own HTTP port so volunteers get
+   *  a clean URL (and it can be firewalled separately). The container listens on
+   *  `volunteerPort`; `volunteerPublicPort` is only what we *show* as the host port
+   *  (mirrors rtspPort) since the container can't know the host mapping. */
+  volunteerPort: intEnv('VOLUNTEER_PORT', 8081),
+  volunteerPublicPort: intEnv('VOLUNTEER_PUBLIC_PORT', 7861),
+
   /** The RTSP port a screen's decoder connects to: rtsp://<host>:<port>/<screen>.
    *  Published to the host by docker-compose and surfaced to the UI, which builds
    *  each link from the address the panel was opened with — so there is no server

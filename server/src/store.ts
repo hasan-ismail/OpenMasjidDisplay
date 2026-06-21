@@ -97,9 +97,11 @@ function freshDB(): DB {
   return {
     version: DB_VERSION,
     admin: null,
+    volunteerAuth: null,
     settings: {
       defaultQuality: config.seed.quality as Quality,
       scheduleTimezone: config.seed.timezone,
+      volunteerEnabled: false,
     },
     timetables: [seededTimetable()],
     sources: [],
@@ -131,7 +133,9 @@ export class Store {
         const parsed = JSON.parse(fs.readFileSync(this.file, 'utf8')) as DB;
         if (parsed && typeof parsed === 'object' && Array.isArray(parsed.timetables)) {
           parsed.timetables = parsed.timetables.map(migrateTimetable);
-          return { ...freshDB(), ...parsed, version: DB_VERSION };
+          const fresh = freshDB();
+          // Merge settings so fields added in later versions (e.g. volunteerEnabled) default in.
+          return { ...fresh, ...parsed, settings: { ...fresh.settings, ...parsed.settings }, version: DB_VERSION };
         }
       }
     } catch (err) {

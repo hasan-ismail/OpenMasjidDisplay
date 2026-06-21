@@ -3,10 +3,11 @@
  *  volume; the session is a signed, HTTP-only cookie. */
 import crypto from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
-import type { AdminAccount } from './types';
 
 const COOKIE = 'omd_session';
+const VOL_COOKIE = 'omd_vol';
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+const VOL_MAX_AGE_MS = 12 * 3600 * 1000; // volunteer sessions are short-lived
 
 export function hashPassword(password: string): { hash: string; salt: string } {
   const salt = crypto.randomBytes(16);
@@ -14,10 +15,10 @@ export function hashPassword(password: string): { hash: string; salt: string } {
   return { hash: dk.toString('hex'), salt: salt.toString('hex') };
 }
 
-export function verifyPassword(password: string, account: AdminAccount): boolean {
+export function verifyPassword(password: string, cred: { hash: string; salt: string }): boolean {
   try {
-    const dk = crypto.scryptSync(password, Buffer.from(account.salt, 'hex'), 32);
-    const stored = Buffer.from(account.hash, 'hex');
+    const dk = crypto.scryptSync(password, Buffer.from(cred.salt, 'hex'), 32);
+    const stored = Buffer.from(cred.hash, 'hex');
     return stored.length === dk.length && crypto.timingSafeEqual(stored, dk);
   } catch {
     return false;
@@ -28,8 +29,8 @@ function hmac(secret: Buffer, payload: string): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
-export function makeToken(secret: Buffer): string {
-  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + MAX_AGE_MS })).toString('base64url');
+export function makeToken(secret: Buffer, maxAgeMs = MAX_AGE_MS): string {
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + maxAgeMs })).toString('base64url');
   return `${payload}.${hmac(secret, payload)}`;
 }
 
@@ -74,4 +75,22 @@ export function setCookieHeader(token: string): string {
 
 export function clearCookieHeader(): string {
   return `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+}
+
+// ── Volunteer session (separate cookie + scope from the admin) ────────────────
+export function makeVolunteerToken(secret: Buffer): string {
+  return makeToken(secret, VOL_MAX_AGE_MS);
+}
+
+export function hasValidVolunteerSession(req: IncomingMessage, secret: Buffer): boolean {
+  const token = parseCookies(req.headers.cookie)[VOL_COOKIE];
+  return !!token && verifyToken(secret, token);
+}
+
+export function setVolunteerCookieHeader(token: string): string {
+  return `${VOL_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(VOL_MAX_AGE_MS / 1000)}`;
+}
+
+export function clearVolunteerCookieHeader(): string {
+  return `${VOL_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
 }

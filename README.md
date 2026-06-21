@@ -33,6 +33,9 @@ each screen shows:
   screens you choose.
 - 🗓️ **Schedules** — switch a screen to the imam camera for Jumu'ah, then back to the timetable afterwards,
   automatically. A volunteer can always take over instantly from the simple mobile page.
+- 📱 **Volunteer page** — turn on a bone-simple mobile page (its own address, unlocked with a short PIN) so a
+  volunteer can see every screen and switch what each shows with a tap — no admin login needed. Enable it and
+  set the PIN in **Settings**.
 
 <div align="center">
 <img src="screenshots/1.svg" width="49%" alt="Prayer timetable display" />
@@ -76,7 +79,7 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.7.2
+    ref: v0.8.0
 ```
 
 ### No install-time settings
