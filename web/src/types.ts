@@ -38,6 +38,8 @@ export interface Timetable {
   timezone: string;
   timeFormat: TimeFormat;
   language: Lang;
+  hijriOffset: number;
+  gregorianOffset: number;
   iqamah: IqamahConfig;
   iqamahYear?: IqamahYear;
   jumuah: string[];

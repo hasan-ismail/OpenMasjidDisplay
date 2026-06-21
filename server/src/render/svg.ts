@@ -36,7 +36,9 @@ export function dimsFor(orientation: string, quality: string): Dims {
     : { width: long, height: short };
 }
 
-const FONT_DISPLAY = 'Noto Serif, Noto Naskh Arabic, DejaVu Serif, serif';
+// Match the OpenMasjidOS UI, which uses a clean system sans everywhere (no serif).
+// Noto Sans is the bundled equivalent; weight carries the "display" emphasis.
+const FONT_DISPLAY = 'Noto Sans, Noto Sans Arabic, DejaVu Sans, sans-serif';
 const FONT_SANS = 'Noto Sans, Noto Sans Arabic, DejaVu Sans, sans-serif';
 
 // Glass surfaces are white-translucent regardless of theme, so the scene (or the
@@ -131,23 +133,24 @@ function fmtShort(hours: number | null, timeFormat: string): string {
   return c.period ? `${c.time} ${c.period.toLowerCase()}` : c.time;
 }
 
-function gregorian(parts: { year: number; month: number; day: number }, lang: string, tz: string): string {
+function gregorian(parts: { year: number; month: number; day: number }, lang: string, offsetDays = 0): string {
   return new Intl.DateTimeFormat(lang, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: tz || undefined,
-  }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)));
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day + offsetDays, 12)));
 }
 
-function hijri(parts: { year: number; month: number; day: number }, lang: string): string {
+function hijri(parts: { year: number; month: number; day: number }, lang: string, offsetDays = 0): string {
   try {
     return new Intl.DateTimeFormat(`${lang}-u-ca-islamic-umalqura`, {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
-    }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)));
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day + offsetDays, 12)));
   } catch {
     return '';
   }
@@ -549,7 +552,8 @@ function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palet
   const timeSize = fitW(primaryStr, w * 0.92, clamp(Math.min(w * 0.3, h * 0.42), 20, 64), 15);
   const secSize = secondaryStr ? fitW(secondaryStr, w * 0.94, clamp(Math.min(w * 0.15, h * 0.16), 10, 24), 9) : 0;
   out.push(text(center, y + h * 0.24 + nameSize * 0.4, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5, editId: `label.${r.label}` }));
-  out.push(text(center, y + h * (secondaryStr ? 0.58 : 0.64), primaryStr, { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+  // Keep the big time at a fixed height for every card so Sunrise (no second line) lines up.
+  out.push(text(center, y + h * 0.58, primaryStr, { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
   if (secondaryStr) {
     out.push(text(center, y + h * 0.87, secondaryStr, { size: secSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
   }
@@ -578,7 +582,7 @@ function clockGroup(cx: number, cy: number, size: number, clock: ClockText, show
   const periodPad = size * 0.16;
   const periodW = clock.period ? periodPad + approxWidth(clock.period, periodSize) : 0;
   const startX = cx - (timeW + periodW) / 2;
-  out.push(text(startX, baseline, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'start', letter }));
+  out.push(text(startX, baseline, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'start', letter }));
   if (clock.period) {
     out.push(text(startX + timeW + periodPad, baseline, clock.period, { size: periodSize, fill: p.textDim, weight: 700, anchor: 'start' }));
   }
@@ -655,7 +659,7 @@ function splitView(
   let clockSize = clamp(leftW * 0.2, 30, 92);
   const cw = approxWidth(clockStr, clockSize);
   if (cw > maxW) clockSize = Math.max(22, clockSize * (maxW / cw));
-  out.push(text(leftX + pad, cy + clockSize * 0.82, clockStr, { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 600, anchor: 'start', letter: -0.5 }));
+  out.push(text(leftX + pad, cy + clockSize * 0.82, clockStr, { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'start', letter: -0.5 }));
   cy += clockSize * 1.06;
   if (tt.showDates) {
     let dateSize = clamp(leftW * 0.045, 11, 20);
@@ -765,8 +769,8 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const nextLabel = L[m.rows.find((r) => r.next)?.label ?? 'fajr'] ?? '';
   const pillText = `${nextLabel.toUpperCase()} ${(L.athan ?? 'Adhan').toUpperCase()} IN   ${counter}`;
 
-  const greg = gregorian(m.parts, tt.language, tt.timezone);
-  const hij = hijri(m.parts, tt.language);
+  const greg = gregorian(m.parts, tt.language, tt.gregorianOffset ?? 0);
+  const hij = hijri(m.parts, tt.language, tt.hijriOffset ?? 0);
 
   const portrait = tt.orientation === 'portrait';
   const base = tt.layoutCarousel ? CAROUSEL[Math.floor((m.parts.hour * 60 + m.parts.minute) / 15) % 3] : tt.layout;

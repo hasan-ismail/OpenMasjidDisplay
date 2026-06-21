@@ -114,7 +114,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     masjidName: state.timetables[0]?.masjidName ?? 'Our Masjid',
     latitude: '', longitude: '',
     method: 'MWL', asrMadhab: 'Standard', timezone: state.settings.scheduleTimezone ?? '',
-    timeFormat: '12h', language: 'en',
+    timeFormat: '12h', language: 'en', hijriOffset: 0, gregorianOffset: 0,
     iqamah: { fajr: { mode: 'offset', offset: 20 }, dhuhr: { mode: 'offset', offset: 10 }, asr: { mode: 'offset', offset: 10 }, maghrib: { mode: 'offset', offset: 5 }, isha: { mode: 'offset', offset: 10 } },
     jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true,
     backgroundImage: '', logoImage: '', footerNote: '', createdAt: '',
@@ -399,6 +399,23 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
               </select>
             </Field>
             <Field label="Footer note (optional)"><input className="input" value={f.footerNote} onChange={(e) => set('footerNote', e.target.value)} placeholder="e.g. Jumu'ah khutbah at 1:15pm" /></Field>
+          </div>
+
+          <div className="grid2">
+            <Field label="Hijri date adjustment" hint="Shift the Islamic date for local moon-sighting.">
+              <select className="select" value={f.hijriOffset} onChange={(e) => set('hijriOffset', Number(e.target.value))}>
+                {[-3, -2, -1, 0, 1, 2, 3].map((n) => (
+                  <option key={n} value={n}>{n === 0 ? 'No change' : `${n > 0 ? '+' : ''}${n} day${Math.abs(n) === 1 ? '' : 's'}`}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Gregorian date adjustment" hint="Rarely needed — usually leave at 'No change'.">
+              <select className="select" value={f.gregorianOffset} onChange={(e) => set('gregorianOffset', Number(e.target.value))}>
+                {[-3, -2, -1, 0, 1, 2, 3].map((n) => (
+                  <option key={n} value={n}>{n === 0 ? 'No change' : `${n > 0 ? '+' : ''}${n} day${Math.abs(n) === 1 ? '' : 's'}`}</option>
+                ))}
+              </select>
+            </Field>
           </div>
 
           <h3 className="section-title">Iqamah times</h3>

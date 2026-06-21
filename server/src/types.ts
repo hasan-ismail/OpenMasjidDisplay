@@ -60,6 +60,10 @@ export interface Timetable {
   timezone: string;
   timeFormat: TimeFormat;
   language: Lang;
+  /** nudge the displayed Hijri date by ±days (moon sighting); 0 = none */
+  hijriOffset: number;
+  /** nudge the displayed Gregorian date by ±days; 0 = none */
+  gregorianOffset: number;
   iqamah: IqamahConfig;
   /** Per-day Iqamah overrides (CSV import); managed only by the iqamah-csv endpoints. */
   iqamahYear?: IqamahYear;

@@ -95,15 +95,13 @@ function Root() {
 function Scene() {
   const prefs = usePrefs();
   const v = prefs.wallpaperImage.trim();
-  const img = /^https?:\/\/[^\s"'()]+$/i.test(v) ? v : null;
-  if (img) {
-    return (
-      <div
-        className="scene scene--image"
-        aria-hidden="true"
-        style={{ backgroundImage: `url("${img}")`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}
-      />
-    );
+  // Accept http(s) and data:image URLs; reject only characters that could break out
+  // of url("…") (quotes, backslash, whitespace) — this is the whole backdrop.
+  const safe = /^(https?:\/\/|data:image\/)/i.test(v) && !/["\\\s]/.test(v) ? v : '';
+  if (safe) {
+    // A standalone layer with NO preset gradient/aurora/pattern behind it, so a
+    // custom wallpaper fully replaces the built-in one (never overlaid on top).
+    return <div className="scene-img" aria-hidden="true" style={{ backgroundImage: `url("${safe}")` }} />;
   }
   return <div className="scene" aria-hidden="true" />;
 }

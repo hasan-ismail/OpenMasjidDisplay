@@ -38,10 +38,13 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: inset 0 0 240px 80px var(--scene-vignette);
 }
 @media (prefers-reduced-motion: reduce) { .scene::before { animation: none; } }
-/* Custom wallpaper image — the whole backdrop; drop the aurora + pattern overlay. */
-.scene--image { background-size: cover; background-position: center; background-repeat: no-repeat; }
-.scene--image::before { display: none; }
-.scene--image::after { display: none; }
+/* Custom wallpaper image — a standalone backdrop layer with NO preset gradient,
+   aurora glow or geometric pattern, so it fully replaces the built-in wallpaper. */
+.scene-img {
+  position: fixed; inset: 0; z-index: -1;
+  background-color: var(--scene-base);
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+}
 
 /* ── Shell ──────────────────────────────────────────────────────────────── */
 .shell { min-height: 100vh; min-height: 100dvh; }

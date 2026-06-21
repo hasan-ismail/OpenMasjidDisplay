@@ -59,6 +59,8 @@ function seededTimetable(): Timetable {
     timezone: s.timezone,
     timeFormat: pick<TimeFormat>(s.timeFormat, ['12h', '24h'], '12h'),
     language: pick<Lang>(s.language, ['en', 'ar', 'ur'], 'en'),
+    hijriOffset: 0,
+    gregorianOffset: 0,
     iqamah: defaultIqamah(),
     jumuah: ['13:30'],
     showSunrise: true,
@@ -86,6 +88,8 @@ function migrateTimetable(t: Timetable): Timetable {
     showLogo: t.showLogo ?? true,
     showSeconds: t.showSeconds ?? false,
     showFooter: t.showFooter ?? true,
+    hijriOffset: t.hijriOffset ?? 0,
+    gregorianOffset: t.gregorianOffset ?? 0,
     backgroundImage: t.backgroundImage ?? '',
     logoImage: t.logoImage ?? '',
     // Drop methods we no longer support (was Tehran/Jafari) → safe default.

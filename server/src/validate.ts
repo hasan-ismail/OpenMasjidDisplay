@@ -129,6 +129,8 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     timezone: str(o.timezone, base?.timezone ?? '', 64).trim(),
     timeFormat: oneOf(o.timeFormat, ['12h', '24h'] as const, base?.timeFormat ?? '12h') as TimeFormat,
     language: oneOf(o.language, ['en', 'ar', 'ur'] as const, base?.language ?? 'en') as Lang,
+    hijriOffset: o.hijriOffset === undefined ? base?.hijriOffset ?? 0 : intIn(o.hijriOffset, 0, -3, 3),
+    gregorianOffset: o.gregorianOffset === undefined ? base?.gregorianOffset ?? 0 : intIn(o.gregorianOffset, 0, -3, 3),
     iqamah: o.iqamah ? normIqamah(o.iqamah) : base?.iqamah ?? defaultIqamah(),
     // iqamahYear (CSV import) is managed only by the iqamah-csv endpoints.
     iqamahYear: base?.iqamahYear,
