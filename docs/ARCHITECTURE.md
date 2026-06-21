@@ -107,22 +107,25 @@ endpoints — and is gated by a separate short-lived cookie (`omd_vol`) and a ha
 Settings. Keeping it on its own port (above the control panel's, so OpenMasjidOS "Open"
 still lands on the panel) lets a masjid share just that URL and firewall it separately.
 
-## OpenMasjidOS integration (optional)
+## OpenMasjidOS Fabric (optional)
 
-When installed through OpenMasjidOS the platform injects `OPENMASJID_BASE_URL` and `OPENMASJID_APP_ID`.
-Everything here is additive — with those unset the app behaves exactly as a standalone install. Full
-contract in `docs/PLATFORM_INTEGRATION.md`.
+The **OpenMasjidOS Fabric** is the platform↔app appearance + SSO layer. When installed through
+OpenMasjidOS the platform injects `OPENMASJID_BASE_URL`, `OPENMASJID_APP_ID`, and — for `sso: true` apps
+(this one) — a per-app `OPENMASJID_APP_SECRET`. Everything here is additive: with those unset the app
+behaves exactly as a standalone install. Full contract in `docs/FABRIC.md`.
 
 - **Appearance inheritance** — on open, the dashboard appends a `#omos=<base64url json>` fragment
   (theme, wallpaper, custom wallpaper image). `prefs.ts` applies + persists it and clears the hash (no
   network needed). While "Match OpenMasjidOS" is on, it also polls `GET <base>/api/public/appearance`
   (~45 s and on focus) so live dashboard theme/wallpaper changes follow.
-- **Single sign-on** — the platform's `omos_session` cookie reaches us (same host, different port =
-  same-site). The backend validates it **server-to-server** against `GET <base>/api/auth/session`
-  (`omos.ts`; positive results cached ~45 s) and, on success, mints a local session — so every other
-  endpoint and the WebSocket stay a simple synchronous cookie check. It never trusts a browser-supplied
-  identity, and falls back to the app's own password whenever SSO is unset, cookie-less, or the platform
-  is unreachable.
+- **Single sign-on (identity-bound)** — the platform's `omos_session` cookie reaches us (same host,
+  different port = same-site). The backend validates it **server-to-server** against
+  `GET <base>/api/auth/session` (`fabric.ts`; positive results cached ~45 s), **presenting our per-app
+  secret in the `X-OpenMasjid-App-Secret` header** — the platform fails closed without it, so the shared
+  cookie can't let another installed app validate as us. On success it mints a local session, so every
+  other endpoint and the WebSocket stay a simple synchronous cookie check. It never trusts a
+  browser-supplied identity, and falls back to the app's own password whenever the base URL/secret is
+  unset, the cookie is absent, or the platform is unreachable.
 
 ## Security & least privilege
 

@@ -44,11 +44,17 @@ export const config = {
   /** What MediaMTX uses to pull from ITSELF for per-TV self-relay paths. */
   rtspLoopback: env('MEDIAMTX_RTSP_LOOPBACK', 'rtsp://127.0.0.1:8554'),
 
-  /** OpenMasjidOS platform integration (injected by the platform at install;
-   *  empty on a standalone install). Enables appearance inheritance and shared
-   *  sign-on with the dashboard. See docs/PLATFORM_INTEGRATION.md. */
+  /** OpenMasjidOS Fabric (the platform↔app appearance + SSO layer). These are
+   *  injected by the platform at install and empty on a standalone install, where
+   *  the app simply uses its own appearance + own login. The wire identifiers
+   *  (env var names, header, cookie, endpoints) are the shared Fabric contract and
+   *  must stay byte-for-byte. See docs/FABRIC.md. */
   omosBaseUrl: env('OPENMASJID_BASE_URL', '').replace(/\/+$/, ''),
   omosAppId: env('OPENMASJID_APP_ID', ''),
+  /** Per-app secret issued by the platform to `sso: true` apps. SSO is identity-
+   *  bound: we must present this on the /api/auth/session check or the platform
+   *  fails closed. It is a CREDENTIAL — never log or expose it. */
+  omosAppSecret: env('OPENMASJID_APP_SECRET', ''),
 
   /** First-run seed values (from install settings). */
   seed: {

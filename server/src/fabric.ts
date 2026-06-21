@@ -1,25 +1,33 @@
 /**
- * OpenMasjidOS single sign-on (optional, server→server).
+ * OpenMasjidOS Fabric — single sign-on (optional, server→server).
  *
- * When this app runs as an OpenMasjidOS app, the platform injects
- * OPENMASJID_BASE_URL and the browser also sends the platform's `omos_session`
- * cookie to us (same host, different port = same-site). We never trust that
- * cookie ourselves — we ask the platform to validate it. A positive result is
- * cached briefly per token so we don't call the platform on every request.
+ * The Fabric is the platform↔app integration layer (appearance + SSO). When this
+ * app runs under OpenMasjidOS, the platform injects OPENMASJID_BASE_URL and a
+ * per-app OPENMASJID_APP_SECRET, and the browser also sends the platform's
+ * `omos_session` cookie to us (same host, different port = same-site). We never
+ * trust that cookie ourselves — we ask the platform to validate it.
  *
- * Everything here degrades gracefully: no base URL, no cookie, or an unreachable
- * platform all simply mean "no SSO", and the app falls back to its own password.
- * See docs/PLATFORM_INTEGRATION.md.
+ * SSO is IDENTITY-BOUND: the platform fails closed unless we present our per-app
+ * secret in the X-OpenMasjid-App-Secret header, so the shared session cookie can't
+ * let some other installed app validate (or impersonate) the session as us. A
+ * positive result is cached briefly per token so we don't call on every request.
+ *
+ * Everything here degrades gracefully: no base URL, no secret, no cookie, or an
+ * unreachable platform all simply mean "no SSO", and the app falls back to its own
+ * password. The wire identifiers (env vars, header, cookie, endpoint) are the
+ * shared Fabric contract — do not rename them. See docs/FABRIC.md.
  */
 import type { IncomingMessage } from 'node:http';
 import { config } from './config';
 import { makeLog } from './logger';
 
-const log = makeLog('omos');
+const log = makeLog('fabric');
 
-/** Is platform SSO even possible (are we running under OpenMasjidOS)? */
+/** Is Fabric SSO even possible? Needs the platform's address AND our per-app
+ *  secret — without the secret the identity-bound platform fails closed, so we
+ *  treat SSO as unavailable and fall back to our own login. */
 export function ssoConfigured(): boolean {
-  return !!config.omosBaseUrl;
+  return !!config.omosBaseUrl && !!config.omosAppSecret;
 }
 
 /** Pull the platform's session token out of the request's Cookie header. */
@@ -51,7 +59,7 @@ function nowMs(): number {
  * on THIS request (never a client-supplied username).
  */
 export async function platformUser(req: IncomingMessage): Promise<string | null> {
-  if (!config.omosBaseUrl) return null;
+  if (!config.omosBaseUrl || !config.omosAppSecret) return null;
   const token = omosCookie(req);
   if (!token) return null;
 
@@ -62,7 +70,12 @@ export async function platformUser(req: IncomingMessage): Promise<string | null>
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 4000);
     const res = await fetch(`${config.omosBaseUrl}/api/auth/session`, {
-      headers: { cookie: `omos_session=${token}` },
+      headers: {
+        cookie: `omos_session=${token}`,
+        // Identity-bound SSO: prove which app is asking. Without this the platform
+        // (v0.19+) fails closed. A credential — never logged.
+        'x-openmasjid-app-secret': config.omosAppSecret,
+      },
       signal: ctrl.signal,
       redirect: 'error', // don't follow a redirect to some other (internal) host
     });

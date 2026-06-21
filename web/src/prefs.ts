@@ -3,7 +3,8 @@
  * localStorage and applied live. This is NOT masjid config — it mirrors how
  * OpenMasjidOS treats appearance, so the panel can follow the viewer's OS
  * light/dark setting and, when running under OpenMasjidOS, inherit the
- * dashboard's theme + wallpaper. See docs/PLATFORM_INTEGRATION.md.
+ * dashboard's theme + wallpaper via the OpenMasjidOS Fabric (the appearance half
+ * of the platform↔app layer). See docs/FABRIC.md.
  */
 import { useEffect, useSyncExternalStore } from 'react';
 

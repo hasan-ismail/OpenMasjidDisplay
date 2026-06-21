@@ -15,7 +15,7 @@ import {
   setCookieHeader,
   clearCookieHeader,
 } from './auth';
-import { platformUser, ssoConfigured } from './omos';
+import { platformUser, ssoConfigured } from './fabric';
 import { LoginLimiter } from './rateLimit';
 import { THEMES } from './render/theme';
 import {

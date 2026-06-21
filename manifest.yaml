@@ -2,7 +2,7 @@ id: display
 name: OpenMasjid Display
 tagline: Run prayer timetables, cameras and HDMI on every screen in your masjid — over your network
 category: displays
-version: 0.13.0
+version: 0.14.0
 author: hasan-ismail
 license: AGPL-3.0
 icon: icon.svg
@@ -46,3 +46,8 @@ ports:
     label: Volunteer page (mobile)
   - container: 8554
     label: RTSP video for the screens
+# OpenMasjidOS Fabric: opt into single sign-on. The platform then issues this app a
+# per-app secret at install (OPENMASJID_APP_SECRET) and honours its identity-bound
+# /api/auth/session calls, so "Open" signs you in with your OpenMasjidOS login.
+# The app still works fully standalone (its own login) when the Fabric is absent.
+sso: true

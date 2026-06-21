@@ -1,18 +1,34 @@
-# OpenMasjidOS ⇄ App integration — proposal for the platform
+# OpenMasjidOS Fabric — appearance + single sign-on (the "Fabric")
 
-> **Status (2026-06-21): implemented on both sides.** The platform ships this in **v0.18.0+**
-> (A1 open-fragment, A2 `GET /api/public/appearance`, B0 env injection, B1 `GET /api/auth/session`).
-> OpenMasjid Display consumes all of it as of **v0.4.0** — appearance in `web/src/prefs.ts`, SSO in
-> `server/src/omos.ts` — and still runs fully standalone when the platform is absent. The sections below
-> are the original contract, kept as the spec of record.
+> **The OpenMasjidOS Fabric** is the platform↔app integration layer: the unified appearance + single
+> sign-on / API that lets an installed app inherit the dashboard's look and (opt-in) share its login.
+> "The Fabric" is the shorthand. It is **optional and backwards-compatible** — this app works fully
+> standalone (its own appearance + own login) when the Fabric is absent.
 >
-> **⚠️ Security follow-up (added after the OpenMasjid Display audit, 2026-06):** Part B's
-> "Security requirements" and the checklist now carry **new platform-side must-haves** — chiefly
-> **binding `/api/auth/session` to the calling app's identity** (`OPENMASJID_APP_ID` / per-app secret)
-> to contain the shared-`omos_session` blast radius, fail-closed/cookie-only validation, prompt
-> revocation, and protecting the injected `OPENMASJID_BASE_URL`. These are **not yet implemented on the
-> platform** and are the recommended next work on the fabric. App side is already hardened to match
-> (audience-bound tokens, login rate-limiting, short SSO session, sanitized cookie forwarding).
+> **Status (2026-06-21): live on both sides, including identity-bound SSO.**
+> - Platform: appearance (A1 `#omos=` fragment, A2 `GET /api/public/appearance`) since **v0.18.0**;
+>   **identity-bound SSO since v0.19.x** — `GET /api/auth/session` now **fails closed** and is bound to
+>   the calling app: a valid `omos_session` cookie alone is no longer enough, the app must present its
+>   per-app secret in the **`X-OpenMasjid-App-Secret`** header (see `packages/core/src/api/fabric.ts`).
+> - OpenMasjid Display: consumes appearance in `web/src/prefs.ts` and SSO in **`server/src/fabric.ts`**.
+>   As of **v0.14.0** it is compliant with the identity-bound contract — `manifest.yaml` sets `sso: true`
+>   (so the platform issues `OPENMASJID_APP_SECRET` at install), and the introspection call sends that
+>   secret in `X-OpenMasjid-App-Secret`. `ssoConfigured()` now requires the secret, so on an older
+>   platform that doesn't issue one, SSO simply stays off and the app uses its own login.
+>
+> The wire identifiers are the shared Fabric contract and must stay byte-for-byte: env vars
+> `OPENMASJID_BASE_URL`, `OPENMASJID_APP_ID`, `OPENMASJID_APP_SECRET`; header `X-OpenMasjid-App-Secret`;
+> cookie `omos_session`; endpoints `/api/auth/session` + `/api/public/appearance`. "Fabric" names the
+> layer, not a prefix on those identifiers.
+>
+> The sections below are the original contract, kept as the spec of record; the authoritative normative
+> contract now lives in the platform repo's `docs/APP_MANIFEST_SPEC.md` ("OpenMasjidOS Fabric" section)
+> and `OpenMasjidAPPS/docs/BUILDING_AN_APP.md` §7.
+>
+> **App-side hardening (from the 2026-06 OpenMasjid Display audit), all in place:** audience-bound local
+> tokens, login rate-limiting, short (~1 h) SSO session, ~45 s positive cache, cookie read only from the
+> request + charset-sanitized before forwarding, `redirect:'error'` + timeout, and now the per-app
+> secret so SSO is identity-bound end to end.
 
 > Audience: the **OpenMasjidOS** core developer. This describes small, optional,
 > backwards-compatible platform features so apps (e.g. **OpenMasjid Display**) can
@@ -100,26 +116,31 @@ expose a way to **introspect** it. Two implementation options:
 
 ### Option B1 — Cookie introspection (lighter; keeps direct-port apps)
 
-1. **Tell apps where the platform is.** On install, inject into the app's env
-   (in `packages/core/src/apps/manager.ts`, alongside the existing env):
+1. **Tell apps where the platform is + who they are.** On install, the platform
+   injects into an `sso: true` app's env (in `packages/core/src/apps/manager.ts`):
    ```
    OPENMASJID_BASE_URL=http://<lan-ip-or-host>:8723
    OPENMASJID_APP_ID=display
+   OPENMASJID_APP_SECRET=<random per-app secret>   # only for sso: true apps — a credential
    ```
 2. **Expose a stable introspection route** (a plain-REST mirror of the existing
    `auth.me`, so apps don't depend on the tRPC envelope):
    ```
-   GET /api/auth/session        (reads the omos_session cookie)
+   GET /api/auth/session        (reads the omos_session cookie + X-OpenMasjid-App-Secret header)
    → 200 { "authenticated": true, "username": "admin" }   // or { "authenticated": false }
    ```
 3. **App flow (server-to-server, never trust the browser):** the app's *backend*
    takes the incoming `omos_session` cookie from the request and forwards it to
-   `${OPENMASJID_BASE_URL}/api/auth/session`. If `authenticated` is true, the app
-   treats the request as signed-in (SSO). Cache the positive result briefly
-   (~30–60 s) per token to avoid a round-trip on every call.
-4. **Fallback:** if `OPENMASJID_BASE_URL` is unset, the platform is unreachable, or
-   no `omos_session` is present, the app uses its **own** password login (today's
-   behavior). So SSO is purely additive.
+   `${OPENMASJID_BASE_URL}/api/auth/session` **together with its own identity** in the
+   `X-OpenMasjid-App-Secret` header (the per-app secret from step 1). The platform
+   returns `authenticated:true` only when the cookie is valid **and** the secret
+   matches a known SSO-capable app — so a valid cookie alone is no longer enough, and
+   one installed app can't impersonate the session as another. If `authenticated` is
+   true, the app treats the request as signed-in (SSO). Cache the positive result
+   briefly (~45 s) per token to avoid a round-trip on every call.
+4. **Fallback:** if `OPENMASJID_BASE_URL` **or `OPENMASJID_APP_SECRET`** is unset, the
+   platform is unreachable, or no `omos_session` is present, the app uses its **own**
+   password login. So SSO is purely additive and degrades gracefully on older platforms.
 
 **Security requirements (must-haves) — `/api/auth/session` is the trust anchor.**
 A single `{"authenticated":true}` from this route causes an app to grant a signed-in
