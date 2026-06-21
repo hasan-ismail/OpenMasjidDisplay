@@ -98,7 +98,7 @@ export class Orchestrator {
     const directSources = refSources.filter((s) => s.mode === 'direct');
     const normalizeSources: NormalizeSpec[] = refSources
       .filter((s) => s.mode === 'normalize')
-      .map((s) => ({ id: s.id, url: s.url, dims: dimsFor('landscape', db.settings.defaultQuality) }));
+      .map((s) => ({ id: s.id, url: s.url, dims: dimsFor('landscape', s.quality) }));
 
     const reachable = await ping();
 

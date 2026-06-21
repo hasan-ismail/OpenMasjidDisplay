@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import type { AppState, Settings } from '../types';
 import { Field, IconCheck, useToast } from '../ui';
+import { usePrefs, prefsStore, WALLPAPERS } from '../prefs';
 
 interface Props {
   state: AppState;
@@ -10,6 +11,7 @@ interface Props {
 
 export function SettingsPage({ state, refetch }: Props) {
   const toast = useToast();
+  const prefs = usePrefs();
   const [host, setHost] = useState(state.settings.rtspPublicHost);
   const [port, setPort] = useState(String(state.settings.rtspPublicPort));
   const [quality, setQuality] = useState<Settings['defaultQuality']>(state.settings.defaultQuality);
@@ -52,7 +54,13 @@ export function SettingsPage({ state, refetch }: Props) {
           <Field label="Address (IP or hostname)" hint="e.g. 192.168.1.50"><input className="input" value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.1.50" /></Field>
           <Field label="Video port" hint="Default 8554"><input className="input" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} /></Field>
         </div>
-        {base && <div className="rtsp-url" style={{ marginBottom: '0.5rem' }}>{base}/&lt;screen&gt;</div>}
+        <button type="button" className="btn btn--ghost btn--sm" onClick={() => setHost(location.hostname)}>
+          Use this device's address ({location.hostname})
+        </button>
+        <p className="hint" style={{ marginBlockStart: '0.4rem' }}>
+          Tip: this is the address you opened the panel with — usually exactly what your screens should use.
+        </p>
+        {base && <div className="rtsp-url" style={{ marginBlockStart: '0.6rem' }}>{base}/&lt;screen&gt;</div>}
       </div>
 
       <div className="panel glass">
@@ -68,6 +76,37 @@ export function SettingsPage({ state, refetch }: Props) {
             <input className="input" value={tz} onChange={(e) => setTz(e.target.value)} placeholder="America/New_York" />
           </Field>
         </div>
+      </div>
+
+      <div className="panel glass">
+        <h3 className="section-title" style={{ marginTop: 0 }}>Appearance</h3>
+        <p className="muted" style={{ marginBottom: '1rem' }}>Saved on this device. The theme can follow your device's light/dark setting.</p>
+        <Field label="Theme">
+          <div className="chips">
+            {(['system', 'light', 'dark'] as const).map((t) => (
+              <button key={t} type="button" className={`chip${prefs.theme === t ? ' is-active' : ''}`} onClick={() => prefsStore.patch({ theme: t })}>
+                {t === 'system' ? 'Match device' : t === 'light' ? 'Light' : 'Dark'}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Wallpaper" hint="Pick the same one you use in OpenMasjidOS.">
+          <div className="wallpaper-row">
+            {Object.entries(WALLPAPERS).map(([id, w]) => (
+              <button
+                key={id}
+                type="button"
+                title={w.label}
+                className={`wallpaper${prefs.wallpaper === id && !prefs.wallpaperImage ? ' is-active' : ''}`}
+                style={{ background: w.preview }}
+                onClick={() => prefsStore.patch({ wallpaper: id, wallpaperImage: '' })}
+              />
+            ))}
+          </div>
+        </Field>
+        <Field label="Custom wallpaper image URL (optional)" hint="Paste the same image URL you use in OpenMasjidOS; leave blank to use a preset.">
+          <input className="input" value={prefs.wallpaperImage} onChange={(e) => prefsStore.patch({ wallpaperImage: e.target.value })} placeholder="https://…/wallpaper.jpg" />
+        </Field>
       </div>
 
       <div className="panel glass">

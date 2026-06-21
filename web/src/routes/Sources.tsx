@@ -107,6 +107,7 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
   const [type, setType] = useState<Source['type']>(src?.type ?? 'camera');
   const [url, setUrl] = useState(src?.url ?? '');
   const [mode, setMode] = useState<Source['mode']>(src?.mode ?? 'direct');
+  const [quality, setQuality] = useState<Source['quality']>(src?.quality ?? '720p');
   const [enabled, setEnabled] = useState(src?.enabled ?? true);
   const [busy, setBusy] = useState(false);
 
@@ -117,7 +118,7 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
     }
     setBusy(true);
     try {
-      const body = { name: name.trim() || 'Source', type, url: url.trim(), mode, enabled };
+      const body = { name: name.trim() || 'Source', type, url: url.trim(), mode, quality, enabled };
       if (src) await api.updateSource(src.id, body);
       else await api.createSource(body);
       onSaved();
@@ -152,12 +153,20 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
       <Field label="RTSP link" hint="From your camera/encoder. Credentials in the link are kept private.">
         <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="rtsp://user:pass@192.168.1.50:554/stream1" />
       </Field>
-      <Field label="Compatibility" hint="Direct uses the least power. 'Most compatible' re-encodes the video so it plays on more screens (uses more processor — best on a mini-PC).">
-        <select className="select" value={mode} onChange={(e) => setMode(e.target.value as Source['mode'])}>
-          <option value="direct">Direct (lightest)</option>
-          <option value="normalize">Most compatible (re-encode)</option>
-        </select>
-      </Field>
+      <div className="grid2">
+        <Field label="Compatibility" hint="'Most compatible' re-encodes so it plays on more screens (more processor — best on a mini-PC).">
+          <select className="select" value={mode} onChange={(e) => setMode(e.target.value as Source['mode'])}>
+            <option value="direct">Direct (lightest)</option>
+            <option value="normalize">Most compatible (re-encode)</option>
+          </select>
+        </Field>
+        <Field label="Picture quality" hint="Used when re-encoding. 720p is best for a Raspberry Pi.">
+          <select className="select" value={quality} onChange={(e) => setQuality(e.target.value as Source['quality'])}>
+            <option value="720p">720p</option>
+            <option value="1080p">1080p</option>
+          </select>
+        </Field>
+      </div>
       <div className="row-between" style={{ padding: '0.3rem 0' }}>
         <span className="label" style={{ margin: 0 }}>Available to screens</span>
         <Toggle checked={enabled} onChange={setEnabled} label="Enabled" />

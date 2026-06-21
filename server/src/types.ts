@@ -69,6 +69,8 @@ export interface Source {
   /** rtsp:// or rtsps:// URL (may embed credentials) */
   url: string;
   mode: SourceMode;
+  /** output resolution when mode is 'normalize' (ignored for 'direct') */
+  quality: Quality;
   enabled: boolean;
   createdAt: string;
 }
@@ -114,8 +116,6 @@ export interface Settings {
   defaultQuality: Quality;
   /** IANA timezone used to evaluate schedules ('' = server zone) */
   scheduleTimezone: string;
-  /** control-panel theme */
-  theme: 'dark' | 'light';
 }
 
 /** The single control-panel admin, created in-app on first run. */

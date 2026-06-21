@@ -74,7 +74,6 @@ function freshDB(): DB {
       rtspPublicPort: config.seed.rtspPublicPort,
       defaultQuality: config.seed.quality as Quality,
       scheduleTimezone: config.seed.timezone,
-      theme: 'dark',
     },
     timetables: [seededTimetable()],
     sources: [],

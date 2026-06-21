@@ -126,6 +126,7 @@ export function normSource(input: unknown, base?: Source): Source {
     type: oneOf(o.type, ['camera', 'hdmi'] as const, base?.type ?? 'camera'),
     url,
     mode: oneOf(o.mode, ['direct', 'normalize'] as const, base?.mode ?? 'direct'),
+    quality: oneOf(o.quality, ['720p', '1080p'] as const, base?.quality ?? '720p') as Quality,
     enabled: o.enabled === undefined ? base?.enabled ?? true : bool(o.enabled, true),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };
@@ -170,6 +171,5 @@ export function normSettings(input: unknown, base: Settings): Settings {
     rtspPublicPort: intIn(o.rtspPublicPort, base.rtspPublicPort, 1, 65535),
     defaultQuality: oneOf(o.defaultQuality, ['720p', '1080p'] as const, base.defaultQuality) as Quality,
     scheduleTimezone: str(o.scheduleTimezone, base.scheduleTimezone, 64).trim(),
-    theme: oneOf(o.theme, ['dark', 'light'] as const, base.theme),
   };
 }

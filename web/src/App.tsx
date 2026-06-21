@@ -1,9 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAppState } from './state';
 import { api } from './api';
+import { usePrefs, prefsStore, resolveTheme } from './prefs';
 import {
   ToastProvider,
-  useToast,
   MasjidMark,
   IconScreen,
   IconClock,
@@ -44,20 +44,32 @@ function Root() {
   const { state, needAuth, needsSetup, loading, refetch, onAuthed } = useAppState();
   const [tab, setTab] = useState<Tab>('screens');
 
-  useEffect(() => {
-    if (state) document.documentElement.dataset.theme = state.settings.theme;
-  }, [state?.settings.theme, state]);
-
   if (needsSetup) return <Setup onDone={onAuthed} />;
   if (needAuth) return <Login onDone={onAuthed} />;
   if (loading || !state) return <Splash />;
   return <Shell state={state} refetch={refetch} tab={tab} setTab={setTab} />;
 }
 
+function Scene() {
+  const prefs = usePrefs();
+  const v = prefs.wallpaperImage.trim();
+  const img = /^https?:\/\/[^\s"'()]+$/i.test(v) ? v : null;
+  if (img) {
+    return (
+      <div
+        className="scene scene--image"
+        aria-hidden="true"
+        style={{ backgroundImage: `url("${img}")`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}
+      />
+    );
+  }
+  return <div className="scene" aria-hidden="true" />;
+}
+
 function Splash() {
   return (
     <div className="auth-wrap">
-      <div className="scene" />
+      <Scene />
       <div className="row" style={{ gap: '0.75rem', color: 'var(--color-primary)' }}>
         <Spinner /> <span className="muted">Loading…</span>
       </div>
@@ -94,19 +106,9 @@ function Shell({
   tab: Tab;
   setTab: (t: Tab) => void;
 }) {
-  const toast = useToast();
-  const toggleTheme = async () => {
-    const prev = state.settings.theme;
-    const next = prev === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    try {
-      await api.saveSettings({ theme: next });
-      await refetch();
-    } catch (e) {
-      document.documentElement.dataset.theme = prev;
-      toast(e instanceof Error ? e.message : 'Could not change the theme.', 'error');
-    }
-  };
+  const prefs = usePrefs();
+  const dark = resolveTheme(prefs.theme) === 'dark';
+  const toggleTheme = () => prefsStore.patch({ theme: dark ? 'light' : 'dark' });
   const logout = async () => {
     try {
       await api.logout();
@@ -117,7 +119,7 @@ function Shell({
 
   return (
     <div className="shell">
-      <div className="scene" />
+      <Scene />
       <header className="topbar">
         <div className="brand">
           <MasjidMark size={26} />
@@ -126,7 +128,7 @@ function Shell({
         <span className="spacer" />
         <Nav tab={tab} setTab={setTab} />
         <button className="icon-btn" onClick={toggleTheme} aria-label="Toggle light/dark">
-          {state.settings.theme === 'dark' ? <IconSun /> : <IconMoon />}
+          {dark ? <IconSun /> : <IconMoon />}
         </button>
         {state.authRequired && (
           <button className="icon-btn" onClick={logout} aria-label="Sign out" title="Sign out">
@@ -170,7 +172,7 @@ function Login({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="auth-wrap">
-      <div className="scene" />
+      <Scene />
       <form className="auth-card glass-raised" onSubmit={submit}>
         <div className="auth-logo"><MasjidMark size={44} /></div>
         <h1 className="page-title" style={{ textAlign: 'center' }}>OpenMasjid Display</h1>
@@ -223,7 +225,7 @@ function Setup({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="auth-wrap">
-      <div className="scene" />
+      <Scene />
       <form className="auth-card glass-raised" onSubmit={submit}>
         <div className="auth-logo"><MasjidMark size={44} /></div>
         <h1 className="page-title" style={{ textAlign: 'center' }}>Welcome</h1>

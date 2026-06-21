@@ -38,6 +38,10 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: inset 0 0 240px 80px var(--scene-vignette);
 }
 @media (prefers-reduced-motion: reduce) { .scene::before { animation: none; } }
+/* Custom wallpaper image — the whole backdrop; drop the aurora + pattern overlay. */
+.scene--image { background-size: cover; background-position: center; background-repeat: no-repeat; }
+.scene--image::before { display: none; }
+.scene--image::after { display: none; }
 
 /* ── Shell ──────────────────────────────────────────────────────────────── */
 .shell { min-height: 100vh; min-height: 100dvh; }
@@ -169,6 +173,11 @@ h1, h2, h3, p { margin: 0; }
 /* Preview image */
 .preview { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-button); display: block; box-shadow: var(--glass-shadow); background: var(--color-surface); }
 .preview--portrait { aspect-ratio: 9 / 16; }
+
+/* Wallpaper swatches (Settings → Appearance) */
+.wallpaper-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.wallpaper { width: 4.2rem; height: 2.8rem; border-radius: 0.6rem; border: 2px solid transparent; cursor: pointer; box-shadow: var(--glass-shadow); padding: 0; }
+.wallpaper.is-active { border-color: var(--color-primary); }
 .preview--portrait { max-width: 280px; margin-inline: auto; }
 
 /* Day picker */

@@ -3,7 +3,9 @@
 .glass {
   position: relative;
   border-radius: var(--radius-card);
-  background-image: linear-gradient(var(--glass-tint), var(--glass-tint));
+  background-image:
+    radial-gradient(7rem at var(--mx, -200%) var(--my, -200%), var(--glint), transparent 55%),
+    linear-gradient(var(--glass-tint), var(--glass-tint));
   background-color: var(--glass-bg);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
@@ -12,7 +14,9 @@
 .glass-raised {
   position: relative;
   border-radius: var(--radius-card);
-  background-image: linear-gradient(var(--glass-tint), var(--glass-tint));
+  background-image:
+    radial-gradient(7rem at var(--mx, -200%) var(--my, -200%), var(--glint), transparent 55%),
+    linear-gradient(var(--glass-tint), var(--glass-tint));
   background-color: var(--glass-bg-raised);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));

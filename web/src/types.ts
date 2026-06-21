@@ -49,6 +49,7 @@ export interface Source {
   type: SourceType;
   url: string;
   mode: SourceMode;
+  quality: Quality;
   enabled: boolean;
   createdAt: string;
 }
@@ -85,7 +86,6 @@ export interface Settings {
   rtspPublicPort: number;
   defaultQuality: Quality;
   scheduleTimezone: string;
-  theme: 'dark' | 'light';
 }
 
 export interface TvStatus {
