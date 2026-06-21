@@ -36,6 +36,9 @@ export class Orchestrator {
   private running = false;
   private rerun = false;
   private statuses: TvStatus[] = [];
+  /** last config applied per path, so we don't re-PATCH (and force a MediaMTX
+   *  config reload) every reconcile when nothing actually changed. */
+  private applied = new Map<string, string>();
 
   constructor(
     private readonly store: Store,
@@ -132,13 +135,24 @@ export class Orchestrator {
       for (const name of configured) {
         if ((name.startsWith('tv_') || name.startsWith('src_')) && !desired.has(name)) {
           await deletePath(name);
+          this.applied.delete(name);
         }
       }
       for (const [name, conf] of desired) {
-        if (configured.has(name)) await patchPath(name, conf);
-        else await addPath(name, conf);
+        const key = JSON.stringify(conf);
+        if (configured.has(name)) {
+          // Only patch (which reloads MediaMTX) when the config actually changed.
+          if (this.applied.get(name) !== key) {
+            await patchPath(name, conf);
+            this.applied.set(name, key);
+          }
+        } else {
+          await addPath(name, conf);
+          this.applied.set(name, key);
+        }
       }
     } else {
+      this.applied.clear(); // re-add everything once it comes back
       log.warn('MediaMTX API unreachable; will retry on next reconcile');
     }
 

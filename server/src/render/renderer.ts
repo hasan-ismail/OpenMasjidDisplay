@@ -79,6 +79,10 @@ abstract class FfmpegPipeline {
     if (this.stopped) return;
     const proc = spawn(FFMPEG, this.args(), { stdio: ['pipe', 'ignore', 'pipe'] });
     this.proc = proc;
+    // If ffmpeg exits while we're mid-write, the stdin pipe emits EPIPE. Swallow it
+    // here — an unhandled stream 'error' would crash the whole process. The 'exit'
+    // handler below is what actually restarts ffmpeg.
+    proc.stdin?.on('error', () => {});
     proc.stderr?.on('data', (d: Buffer) => {
       this.stderrTail = (this.stderrTail + d.toString()).slice(-600);
     });

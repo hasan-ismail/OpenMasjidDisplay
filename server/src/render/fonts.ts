@@ -37,9 +37,13 @@ export function fontOptions(): ResvgFontOptions {
     }
   }
   if (files.length > 0) {
-    log.info(`using ${files.length} bundled font file(s) for rendering`);
+    // We construct a Resvg renderer per video frame, so it parses these files every
+    // frame — keep it to just the Regular/Bold weights of the families we use.
+    const preferred = files.filter((f) => /(-Regular|-Bold)\.(ttf|otf)$|DejaVuSans(-Bold)?\.ttf$|DejaVuSerif\.ttf$/i.test(f));
+    const use = (preferred.length ? preferred : files).slice(0, 12);
+    log.info(`using ${use.length} of ${files.length} bundled font file(s) for rendering`);
     cached = {
-      fontFiles: files.slice(0, 24),
+      fontFiles: use,
       loadSystemFonts: false,
       defaultFontFamily: 'Noto Sans',
       serifFamily: 'Noto Serif',

@@ -154,8 +154,9 @@ function glass(
   const sw = opts.sw ?? 1;
   const parts: string[] = [];
   if (opts.glow) {
+    // A subtle outer ring (no blur — keeps per-frame rendering cheap for live video).
     parts.push(
-      `<rect x="${(x - 1).toFixed(1)}" y="${(y - 1).toFixed(1)}" width="${(w + 2).toFixed(1)}" height="${(h + 2).toFixed(1)}" rx="${(r + 1).toFixed(1)}" fill="none" stroke="${opts.glow}" stroke-width="6" opacity="0.5" filter="url(#soft)"/>`,
+      `<rect x="${(x - 2).toFixed(1)}" y="${(y - 2).toFixed(1)}" width="${(w + 4).toFixed(1)}" height="${(h + 4).toFixed(1)}" rx="${(r + 2).toFixed(1)}" fill="none" stroke="${opts.glow}" stroke-width="2" opacity="0.4"/>`,
     );
   }
   parts.push(rect(x, y, w, h, r, fill));
@@ -310,6 +311,10 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
       <stop offset="65%" stop-color="#d6def0"/>
       <stop offset="100%" stop-color="#aab8d6"/>
     </radialGradient>
+    <radialGradient id="moonglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="${hexToRgba('#cdd9f2', 0.5)}"/>
+      <stop offset="100%" stop-color="${hexToRgba('#cdd9f2', 0)}"/>
+    </radialGradient>
     <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="rgba(255,255,255,0.18)"/>
       <stop offset="42%" stop-color="rgba(255,255,255,0.03)"/>
@@ -324,7 +329,6 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
       <stop offset="50%" stop-color="${hexToRgba(p.bg, 0.35)}"/>
       <stop offset="100%" stop-color="${hexToRgba(p.bg, 0.7)}"/>
     </linearGradient>
-    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="10"/></filter>
     ${hasImage ? `<filter id="frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="14"/></filter>` : ''}
     <pattern id="khatam" width="58" height="58" patternUnits="userSpaceOnUse">
       <g fill="none" stroke="${p.pattern}" stroke-width="1" opacity="0.05">
@@ -335,19 +339,22 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
   </defs>`;
 }
 
-/** The sun (day) or moon (night) as a soft glowing body. */
+/** The sun (day) or moon (night) — soft edges come from the gradient fade, not a
+ *  blur filter, so each video frame stays cheap to rasterize. */
 function celestialBody(cel: Celestial, W: number, H: number): string {
   const r = Math.min(W, H) * 0.05;
+  const cx = cel.x.toFixed(1);
+  const cy = cel.y.toFixed(1);
   if (cel.isDay) {
     return (
-      `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${(r * 2.6).toFixed(1)}" fill="url(#sun)" opacity="0.55" filter="url(#soft)"/>` +
-      `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${r.toFixed(1)}" fill="url(#sun)"/>` +
-      `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${(r * 0.62).toFixed(1)}" fill="#fff7e0"/>`
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 2.4).toFixed(1)}" fill="url(#sun)"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 0.85).toFixed(1)}" fill="#fff3c4"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="${(r * 0.5).toFixed(1)}" fill="#fffbe9"/>`
     );
   }
   return (
-    `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${(r * 2.3).toFixed(1)}" fill="${hexToRgba('#bcd0f5', 0.4)}" filter="url(#soft)"/>` +
-    `<circle cx="${cel.x.toFixed(1)}" cy="${cel.y.toFixed(1)}" r="${r.toFixed(1)}" fill="url(#moon)"/>`
+    `<circle cx="${cx}" cy="${cy}" r="${(r * 1.9).toFixed(1)}" fill="url(#moonglow)"/>` +
+    `<circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="url(#moon)"/>`
   );
 }
 
@@ -380,13 +387,18 @@ function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palet
 
   const center = x + w / 2;
   if (r.active) out.push(rect(x + cardR, y + Math.max(2, h * 0.05), w - 2 * cardR, Math.max(2, h * 0.025), 2, p.primarySoft));
-  const nameSize = clamp(Math.min(w * 0.16, h * 0.2), 12, 30);
-  const timeSize = clamp(Math.min(w * 0.3, h * 0.42), 20, 64);
-  const iqSize = clamp(Math.min(w * 0.15, h * 0.16), 10, 26);
+  const timeStr = fmtShort(r.adhan, timeFormat);
+  const iqStr = r.iqamah != null ? `${L.iqamah} ${fmtShort(r.iqamah, timeFormat)}` : '';
+  // Fit each line to the card width so times never spill into a neighbouring card.
+  const fitW = (s: string, max: number, cap: number, floor: number) =>
+    clamp(Math.min(cap, max / Math.max(1, s.length * 0.6)), floor, cap);
+  const nameSize = fitW(name, w * 0.9, clamp(Math.min(w * 0.16, h * 0.2), 12, 30), 11);
+  const timeSize = fitW(timeStr, w * 0.92, clamp(Math.min(w * 0.3, h * 0.42), 20, 64), 15);
+  const iqSize = iqStr ? fitW(iqStr, w * 0.94, clamp(Math.min(w * 0.15, h * 0.16), 10, 24), 9) : 0;
   out.push(text(center, y + h * 0.24 + nameSize * 0.4, name, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5 }));
-  out.push(text(center, y + h * (r.iqamah != null ? 0.58 : 0.64), fmtShort(r.adhan, timeFormat), { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
-  if (r.iqamah != null) {
-    out.push(text(center, y + h * 0.87, `${L.iqamah} ${fmtShort(r.iqamah, timeFormat)}`, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
+  out.push(text(center, y + h * (r.iqamah != null ? 0.58 : 0.64), timeStr, { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+  if (iqStr) {
+    out.push(text(center, y + h * 0.87, iqStr, { size: iqSize, fill: p.goldSoft, family: FONT_SANS, weight: 600, anchor: 'middle' }));
   }
   if (r.next) out.push(`<circle cx="${center.toFixed(1)}" cy="${(y + h - h * 0.06).toFixed(1)}" r="${Math.max(2, w * 0.018).toFixed(1)}" fill="${p.gold}"/>`);
   return out.join('');
