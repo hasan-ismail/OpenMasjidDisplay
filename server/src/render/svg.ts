@@ -110,6 +110,27 @@ function lighten(hex: string, amt: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }
 
+/** Blend two solid hex colours: t=0 → a, t=1 → b. */
+function mixHex(a: string, b: string, t: number): string {
+  const pa = /^#?([0-9a-f]{6})$/i.exec(a.trim());
+  const pb = /^#?([0-9a-f]{6})$/i.exec(b.trim());
+  if (!pa || !pb) return a;
+  const na = parseInt(pa[1], 16), nb = parseInt(pb[1], 16);
+  const k = clamp(t, 0, 1);
+  const ch = (sh: number) => Math.round(((na >> sh) & 255) + (((nb >> sh) & 255) - ((na >> sh) & 255)) * k);
+  return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
+}
+
+/** Derive the dim/faint text shades from a chosen main text colour. We blend toward
+ *  a neutral grey to make them *solid* (de-emphasised but readable), rather than
+ *  semi-transparent — a translucent dim text lets a busy photo show through and
+ *  washes out to an unreadable grey (that was the "grey Adhan column" bug). This
+ *  mirrors how the theme palettes define solid textDim/textFaint. */
+function derivedText(hex: string): Pick<Palette, 'text' | 'textDim' | 'textFaint'> {
+  const NEUTRAL = '#7c7c7c';
+  return { text: hex, textDim: mixHex(hex, NEUTRAL, 0.34), textFaint: mixHex(hex, NEUTRAL, 0.56) };
+}
+
 /**
  * Resolve the effective text colours for a timetable. A manual `textColor`
  * (hex) always wins. Otherwise "auto": keep the theme's tuned text, except when
@@ -120,11 +141,10 @@ function lighten(hex: string, amt: number): string {
 function applyTextColor(base: Palette, textColor: string | undefined, hasImage: boolean, bgLight: boolean): Palette {
   if (textColor && /^#?[0-9a-f]{6}$/i.test(textColor.trim())) {
     const hex = textColor.trim().startsWith('#') ? textColor.trim() : `#${textColor.trim()}`;
-    return { ...base, text: hex, textDim: hexToRgba(hex, 0.74), textFaint: hexToRgba(hex, 0.48) };
+    return { ...base, ...derivedText(hex) };
   }
   if (hasImage && bgLight) {
-    const dark = '#10161d';
-    return { ...base, text: dark, textDim: hexToRgba(dark, 0.76), textFaint: hexToRgba(dark, 0.52) };
+    return { ...base, ...derivedText('#10161d') };
   }
   return base;
 }
