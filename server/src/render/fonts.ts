@@ -41,6 +41,12 @@ export interface ResvgFontOptions {
 }
 
 let cached: ResvgFontOptions | null = null;
+/** The bundled font file path for ffmpeg's drawtext ticker (null = none bundled). */
+let primaryFont: string | null = null;
+export function primaryFontFile(): string | null {
+  fontOptions(); // ensure the scan/selection has run
+  return primaryFont;
+}
 
 function scan(): string[] {
   const found: string[] = [];
@@ -76,6 +82,7 @@ export function fontOptions(): ResvgFontOptions {
     return cached;
   }
 
+  primaryFont = chosen.find((f) => /NotoSans-Bold/i.test(f)) ?? chosen.find((f) => /NotoSans-Regular/i.test(f)) ?? chosen[0] ?? null;
   const haveNotoSans = chosen.some((f) => /NotoSans-/.test(path.basename(f)));
   const haveNotoSerif = chosen.some((f) => /NotoSerif-/.test(path.basename(f)));
   log.info(`using ${chosen.length} of ${all.length} bundled font file(s) for rendering`);

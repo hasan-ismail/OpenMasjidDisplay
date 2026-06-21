@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { AppState, Settings } from '../types';
 import { Field, Toggle, IconCheck, useToast } from '../ui';
 import { usePrefs, prefsStore, WALLPAPERS, fetchOmosAppearance } from '../prefs';
+import { timezoneOptions } from '../timezones';
 
 interface Props {
   state: AppState;
@@ -49,8 +50,10 @@ export function SettingsPage({ state, refetch }: Props) {
               <option value="1080p">1080p</option>
             </select>
           </Field>
-          <Field label="Schedule time zone" hint="Used to run schedule rules. e.g. America/New_York (blank = server zone).">
-            <input className="input" value={tz} onChange={(e) => setTz(e.target.value)} placeholder="America/New_York" />
+          <Field label="Schedule time zone" hint="Used to run schedule rules.">
+            <select className="select" value={tz} onChange={(e) => setTz(e.target.value)}>
+              {timezoneOptions(tz).map((z) => <option key={z.id || 'server'} value={z.id}>{z.label}</option>)}
+            </select>
           </Field>
         </div>
       </div>

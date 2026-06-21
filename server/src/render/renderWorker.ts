@@ -77,7 +77,8 @@ port.on('message', (msg: Req) => {
     const { bg, logo } = assets(tt);
     const annFile = activeAnnouncementImage(tt, now);
     const announcement = annFile ? announcementDataUri(annFile) : null;
-    const svg = renderDisplaySvg(tt, now, { bg, logo, announcement });
+    // tickerBandOnly: paint just the strip — ffmpeg overlays the moving text smoothly.
+    const svg = renderDisplaySvg(tt, now, { bg, logo, announcement, tickerBandOnly: true });
     const r = new Resvg(svg, { font: fontOptions() }).render();
     const px = r.pixels;
     const ab = new ArrayBuffer(px.byteLength);

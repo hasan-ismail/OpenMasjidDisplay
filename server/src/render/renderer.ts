@@ -10,9 +10,12 @@
  * Pipelines self-heal: if ffmpeg exits unexpectedly it is respawned with backoff.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { config } from '../config';
 import { makeLog } from '../logger';
-import { dimsFor, tickerActive, type Dims } from './svg';
+import { dimsFor, activeTickerString, tickerLayout, type Dims } from './svg';
+import { primaryFontFile } from './fonts';
 import { RenderWorker } from './renderPool';
 import type { Timetable } from '../types';
 
@@ -20,16 +23,55 @@ const log = makeLog('render');
 
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+function safeTicker(tt: Timetable): string {
+  try {
+    return activeTickerString(tt, new Date());
+  } catch {
+    return '';
+  }
+}
+
 function levelFor(h: number): string {
   return h >= 1080 ? '4.0' : '3.1';
 }
 
-function timetableArgs(d: Dims, target: string): string[] {
+export interface TickerSpec {
+  text: string;
+  textfile: string;
+  fontfile: string;
+}
+
+/** Build the video filter. The scrolling ticker is drawn by ffmpeg with drawtext
+ *  AFTER fps=15, so it animates at the output frame rate (smooth) even though the
+ *  SVG frames only update once per second. The SVG paints just the strip. */
+function timetableVf(d: Dims, ticker: TickerSpec | null): string {
+  if (!ticker) return 'format=yuv420p,fps=15';
+  const { y, bandH, fs } = tickerLayout(d.width, d.height);
+  const size = Math.round(fs);
+  const speed = Math.round(clamp(Math.min(d.width, d.height) * 0.04, 30, 90)); // px/sec
+  const gap = Math.round(size * 4);
+  const period = `tw+${gap}`; // tw = real text width at render time → seamless tiling
+  const yExpr = `${Math.round(y + bandH / 2)}-th/2`;
+  // Underestimate the text width so we emit ENOUGH copies to cover the screen
+  // (extra copies just sit off-screen); the real spacing uses tw above.
+  const periodEst = Math.max(100, ticker.text.length * size * 0.45);
+  const copies = Math.min(20, Math.max(3, Math.ceil(d.width / periodEst) + 2));
+  const dt: string[] = [];
+  for (let k = 0; k < copies; k++) {
+    const x = `w-mod(t*${speed}\\,${period})${k > 0 ? `-${k}*(${period})` : ''}`;
+    dt.push(`drawtext=fontfile='${ticker.fontfile}':textfile='${ticker.textfile}':fontsize=${size}:fontcolor=white:x=${x}:y=${yExpr}`);
+  }
+  return `fps=15,${dt.join(',')},format=yuv420p`;
+}
+
+function timetableArgs(d: Dims, target: string, ticker: TickerSpec | null): string[] {
   const br = d.height >= 1080 ? 3500 : 1800;
   return [
     '-hide_banner', '-loglevel', 'warning',
     '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${d.width}x${d.height}`, '-framerate', '1', '-i', 'pipe:0',
-    '-vf', 'format=yuv420p,fps=15', '-fps_mode', 'cfr',
+    '-vf', timetableVf(d, ticker), '-fps_mode', 'cfr',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
     '-profile:v', 'baseline', '-level', levelFor(d.height),
     '-g', '30', '-keyint_min', '30', '-sc_threshold', '0', '-bf', '0',
@@ -133,20 +175,55 @@ class TimetablePipeline extends FfmpegPipeline {
   private readonly worker = new RenderWorker();
   private rendering = false;
   private looping = false;
+  // The scrolling ticker is drawn by ffmpeg (smooth). We track the active text and,
+  // when it changes (schedule windows, edits, enable/disable), rewrite the text file
+  // and respawn ffmpeg so its drawtext filters rebuild.
+  private tickerText = '';
+  private readonly tickerFile: string;
 
   constructor(id: string, private readonly getTt: () => Timetable | undefined) {
     super(id);
+    this.tickerFile = path.join(config.dataDir, `ticker_${id}.txt`);
     const tt = getTt();
     this.dims = tt ? dimsFor(tt.orientation, tt.quality) : { width: 1280, height: 720 };
+    this.tickerText = tt ? safeTicker(tt) : '';
+    this.writeTickerFile();
+  }
+
+  private tickerSpec(): TickerSpec | null {
+    const font = primaryFontFile();
+    if (!this.tickerText || !font) return null;
+    return { text: this.tickerText, textfile: this.tickerFile, fontfile: font };
+  }
+
+  private writeTickerFile(): void {
+    if (!this.tickerText) return;
+    try {
+      fs.writeFileSync(this.tickerFile, this.tickerText);
+    } catch (err) {
+      log.debug(`ticker file write failed for ${this.id}`);
+    }
   }
 
   protected args(): string[] {
-    return timetableArgs(this.dims, this.target());
+    return timetableArgs(this.dims, this.target(), this.tickerSpec());
+  }
+
+  private restartProc(): void {
+    this.clearRestart();
+    if (this.proc) {
+      const old = this.proc;
+      this.proc = null;
+      try {
+        old.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
+    }
+    this.spawnProc();
   }
 
   protected override onSpawned(): void {
-    // A self-scheduling loop so we can render faster while a ticker is scrolling
-    // (smoother) and idle at 1 fps otherwise. Survives ffmpeg respawns.
     if (!this.looping) {
       this.looping = true;
       this.loop();
@@ -159,16 +236,7 @@ class TimetablePipeline extends FfmpegPipeline {
       return;
     }
     this.frame();
-    const tt = this.getTt();
-    let delay = 1000;
-    try {
-      // Render faster while a ticker scrolls (capped by what the box can do via the
-      // in-flight guard); idle at 1fps otherwise to keep CPU low.
-      if (tt && tickerActive(tt, new Date())) delay = 100;
-    } catch {
-      /* keep default */
-    }
-    this.timer = setTimeout(() => this.loop(), delay);
+    this.timer = setTimeout(() => this.loop(), 1000);
   }
 
   private frame(): void {
@@ -178,20 +246,18 @@ class TimetablePipeline extends FfmpegPipeline {
       this.stop();
       return;
     }
+    // Ticker text changed → rewrite the file and respawn so drawtext rebuilds.
+    const tk = safeTicker(tt);
+    if (tk !== this.tickerText) {
+      this.tickerText = tk;
+      this.writeTickerFile();
+      this.restartProc();
+      return;
+    }
     const want = dimsFor(tt.orientation, tt.quality);
     if (want.width !== this.dims.width || want.height !== this.dims.height) {
       this.dims = want;
-      this.clearRestart();
-      if (this.proc) {
-        const old = this.proc;
-        this.proc = null;
-        try {
-          old.kill('SIGKILL');
-        } catch {
-          /* ignore */
-        }
-      }
-      this.spawnProc();
+      this.restartProc();
       return;
     }
     if (this.rendering) return; // don't render faster than we can deliver
@@ -222,6 +288,11 @@ class TimetablePipeline extends FfmpegPipeline {
     this.timer = null;
     this.looping = false;
     this.worker.dispose();
+    try {
+      fs.unlinkSync(this.tickerFile);
+    } catch {
+      /* never written / already gone */
+    }
     super.stop();
   }
 }

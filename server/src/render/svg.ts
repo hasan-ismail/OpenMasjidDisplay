@@ -187,6 +187,11 @@ export function activeAnnouncementImage(tt: Timetable, now: Date): string | null
   return a.images[idx] ?? null;
 }
 
+// Separator between ticker messages. Uses non-breaking spaces ( ) because SVG
+// <text> collapses ordinary whitespace runs to a single space — nbsp keeps the gap,
+// and ffmpeg drawtext renders it fine too.
+const TICKER_SEP = '     •     ';
+
 /** The combined ticker text active right now (messages within their windows), or ''. */
 function activeTickerText(tt: Timetable, parts: ReturnType<typeof localParts>): string {
   const tk = tt.ticker;
@@ -195,14 +200,26 @@ function activeTickerText(tt: Timetable, parts: ReturnType<typeof localParts>): 
   return tk.messages
     .filter((mm) => mm.text.trim() && inDailyWindow(nowMin, mm.start, mm.end))
     .map((mm) => mm.text.trim())
-    .join('      •      ');
+    .join(TICKER_SEP);
 }
 
-/** Whether the timetable currently has a scrolling ticker (so the renderer can pick
- *  a faster frame cadence for smoother scrolling). */
+/** The active ticker string for the given instant (used by the renderer to drive the
+ *  smooth ffmpeg-side scroll). */
+export function activeTickerString(tt: Timetable, now: Date): string {
+  return activeTickerText(tt, localParts(now, tt.timezone || undefined));
+}
+
+/** Whether the timetable currently has a scrolling ticker. */
 export function tickerActive(tt: Timetable, now: Date): boolean {
   if (!tt.ticker?.enabled || !tt.ticker.messages?.length) return false;
-  return activeTickerText(tt, localParts(now, tt.timezone || undefined)).length > 0;
+  return activeTickerString(tt, now).length > 0;
+}
+
+/** Geometry of the bottom ticker strip — shared by the SVG band and the ffmpeg
+ *  drawtext overlay so the moving text lands exactly on the strip. */
+export function tickerLayout(_W: number, H: number): { y: number; bandH: number; fs: number } {
+  const bandH = clamp(H * 0.07, 30, 92);
+  return { y: H - bandH, bandH, fs: clamp(bandH * 0.46, 14, 40) };
 }
 
 interface TextOpts {
@@ -650,23 +667,23 @@ function clockGroup(cx: number, cy: number, size: number, clock: ClockText, show
 /** A scrolling ticker strip along the bottom. The text is tiled and offset by the
  *  clock so it scrolls continuously; smoothness depends on the frame cadence (the
  *  renderer speeds up while a ticker is active). */
-function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number): string {
-  const bandH = clamp(H * 0.07, 30, 92);
-  const y = H - bandH;
-  const fs = clamp(bandH * 0.46, 14, 40);
+function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, bandOnly: boolean): string {
+  const { y, bandH, fs } = tickerLayout(W, H);
   const out: string[] = [];
   out.push(rect(0, y, W, bandH, 0, hexToRgba(p.bg, 0.6)));
   out.push(rect(0, y, W, Math.max(1.5, bandH * 0.025), 0, hexToRgba(p.primary, 0.55)));
-  // Generous gap + a gold bullet between messages so they read as separate items.
-  const sep = '          ●          ';
-  const seg = `${msg}${sep}`;
-  const segW = Math.max(60, approxWidth(seg, fs));
-  // Slow, steady scroll (looks smoother at the modest frame rate we can sustain).
-  const speed = clamp(Math.min(W, H) * 0.035, 30, 80); // px per second
-  const offset = ((now.getTime() / 1000) * speed) % segW;
-  const baseline = y + bandH * 0.66;
-  for (let x = -offset; x < W; x += segW) {
-    out.push(text(x, baseline, seg, { size: fs, fill: p.text, family: FONT_SANS, weight: 600, anchor: 'start' }));
+  // In the video pipeline the moving text is drawn by ffmpeg (smooth at output fps),
+  // so we only paint the strip here. For previews (bandOnly=false) draw the text in
+  // the SVG so the editor shows it.
+  if (!bandOnly) {
+    const seg = `${msg}${TICKER_SEP}`;
+    const segW = Math.max(60, approxWidth(seg, fs));
+    const speed = clamp(Math.min(W, H) * 0.04, 30, 90);
+    const offset = ((now.getTime() / 1000) * speed) % segW;
+    const baseline = y + bandH * 0.66;
+    for (let x = -offset; x < W; x += segW) {
+      out.push(text(x, baseline, seg, { size: fs, fill: p.text, family: FONT_SANS, weight: 600, anchor: 'start' }));
+    }
   }
   return out.join('');
 }
@@ -738,14 +755,15 @@ function splitLeftPanel(
     const dw = approxWidth(dstr, dateSize);
     if (dw > maxW) dateSize = Math.max(9, dateSize * (maxW / dw));
     out.push(text(leftX + pad, cy + dateSize, dstr, { size: dateSize, fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'start' }));
-    cy += dateSize * 1.7;
+    cy += dateSize + pad * 0.8;
   } else {
-    cy += pad * 0.4;
+    cy += pad * 0.5;
   }
 
   const colAdhan = leftX + leftW * 0.66;
   const colIq = leftX + leftW - pad;
   const headSize = clamp(leftW * 0.04, 9, 16);
+  cy += headSize; // clear gap so the column headers never sit under the date line
   out.push(text(colAdhan, cy, L.athan?.toUpperCase() ?? 'ADHAN', { size: headSize, fill: p.textFaint, weight: 700, anchor: 'end', letter: 1 }));
   out.push(text(colIq, cy, L.iqamah?.toUpperCase() ?? 'IQAMAH', { size: headSize, fill: p.textFaint, weight: 700, anchor: 'end', letter: 1 }));
   cy += headSize * 0.6;
@@ -826,6 +844,8 @@ export interface RenderOpts {
   announcement?: string | null;
   /** data: URI of an uploaded masjid logo, or null for the built-in mark */
   logo?: string | null;
+  /** video pipeline: draw only the ticker strip (ffmpeg overlays the moving text) */
+  tickerBandOnly?: boolean;
   /** when present, click-to-edit text regions are collected here (no extra cost
    *  for the video pipeline, which never passes a sink) */
   sink?: { hotspots: Hotspot[] };
@@ -962,7 +982,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   }
 
   // ── Scrolling ticker (drawn last, over everything) ───────────────────────────
-  if (tickerText) out.push(tickerBand(tickerText, now, p, W, H));
+  if (tickerText) out.push(tickerBand(tickerText, now, p, W, H, !!opts.tickerBandOnly));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }
