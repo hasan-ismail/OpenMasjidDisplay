@@ -17,7 +17,8 @@
 >   platform that doesn't issue one, SSO simply stays off and the app uses its own login.
 > - **Notifications (since v0.20.0):** `manifest.yaml` sets `notifications: true`; `fabric.ts` `notify()`
 >   relays alerts via `POST /api/fabric/notify` (per-app secret, `{text,title?,level?}`). The app never
->   sees the webhook URL and the call fails soft. Used by the screen-offline monitor (`tvMonitor.ts`).
+>   sees the webhook URL and the call fails soft. Used to alert when a screen stops/starts pulling its RTSP
+>   stream (offline/online), decided in `orchestrator.ts` from MediaMTX reader counts — no probe/config.
 > - **Compose security:** the app passes the platform's tightened compose risk-check (v0.19.2) — no
 >   privileged / host-namespace / `cap_add` / `devices` / `device_cgroup_rules` / `security_opt:unconfined`
 >   / `group_add` / Docker-socket / sensitive-mount / `extends:`/`include:`; pins the image, named volume.
@@ -35,6 +36,37 @@
 > tokens, login rate-limiting, short (~1 h) SSO session, ~45 s positive cache, cookie read only from the
 > request + charset-sanitized before forwarding, `redirect:'error'` + timeout, and now the per-app
 > secret so SSO is identity-bound end to end.
+
+---
+
+## ⚠️ Open item for the OpenMasjidOS agent — Fabric notify isn't delivering
+
+**Symptom (reported by a masjid running this app):** a screen-offline alert never reached the webhook.
+The platform's own **Settings → Notifications → "test webhook"** *does* post successfully, so the webhook
+destination is fine — but messages **relayed by an app** through `POST /api/fabric/notify` don't arrive.
+
+**App side is verified correct** (`server/src/fabric.ts` `notify()`): it POSTs to
+`${OPENMASJID_BASE_URL}/api/fabric/notify` with header `X-OpenMasjid-App-Secret: <OPENMASJID_APP_SECRET>`,
+body `{ text, title?, level? }`, `redirect:'error'` + timeout, and fails soft. The app exposes a diagnostic
+**`POST /api/notify-test`** that returns `{ baseUrlSet, hasSecret, baseUrlLoopback, delivered, reason }` — run
+it (Settings → Notifications → "Send a test notification") to see the exact `reason` from the app's side.
+
+**Please check on the platform (`packages/core/src/api/fabric.ts` + `notify/notify.ts`):**
+1. **Capability + secret are granted on UPDATE, not just first install.** This app was likely installed
+   before it declared `notifications: true`, so its stored app record may still have `notify:false` (→ the
+   route's `if (!app || !app.notify) return 403`) and/or no `OPENMASJID_APP_SECRET` injected. Confirm that
+   *updating* an installed app re-reads the manifest, re-grants capabilities, and (re)injects the secret —
+   otherwise the only fix is remove + reinstall, which is bad UX.
+2. **`sendNotification(payload, appId)` actually posts to the webhook** — i.e. the app-relay path hits the
+   *same* delivery code as the working Settings "test webhook" button, loads the configured destination, and
+   doesn't just return `{delivered:true}` without sending. A divergence between the two paths fits the
+   symptom exactly (Settings test works, app relay doesn't).
+3. The route is **registered/deployed** in the running build (`registerFabric`) — an older platform returns
+   404 for `/api/fabric/notify`.
+4. It isn't being silently dropped by the **per-app / platform rate limit** or a `disabled` short-circuit.
+
+The wire contract is unchanged and correct on the app side; this is about the platform delivering relayed
+notifications. (OpenMasjid Display ≥ v0.20.2.)
 
 > Audience: the **OpenMasjidOS** core developer. This describes small, optional,
 > backwards-compatible platform features so apps (e.g. **OpenMasjid Display**) can

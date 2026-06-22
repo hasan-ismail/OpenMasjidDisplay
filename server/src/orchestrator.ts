@@ -28,7 +28,7 @@ import {
   getPathState,
   type PathConf,
 } from './mediamtx';
-import type { ContentRef, TvStatus } from './types';
+import type { ContentRef, Tv, TvStatus } from './types';
 
 const log = makeLog('orchestrator');
 
@@ -40,12 +40,17 @@ export class Orchestrator {
    *  config reload) every reconcile when nothing actually changed. */
   private applied = new Map<string, string>();
 
+  /** Per-screen alert state for the offline/online notifications. */
+  private alerts = new Map<string, { downSince: number | null; offlineNotified: boolean }>();
+  /** A screen must stop pulling its stream for this long before we call it offline. */
+  private readonly OFFLINE_MS = 90_000;
+
   constructor(
     private readonly store: Store,
     private readonly render: RenderManager,
     private readonly onStatus: (s: TvStatus[]) => void,
-    /** optional decoder-reachability source for the live status (the ping monitor) */
-    private readonly reachable?: (tvId: string) => boolean | undefined,
+    /** optional Fabric notifier — alerts the masjid when a screen stops/starts pulling */
+    private readonly notify?: (p: { title?: string; text: string; level?: 'info' | 'success' | 'warning' | 'error' }) => unknown,
   ) {}
 
   getStatuses(): TvStatus[] {
@@ -166,21 +171,76 @@ export class Orchestrator {
     const statuses: TvStatus[] = [];
     for (const { tv, res } of resolutions) {
       const cp = this.contentPath(res.content);
-      let ready = false;
+      // "Pulling" = a decoder is actively reading this screen's RTSP path. The path
+      // is on-demand, so a reader (the screen) is what makes it live — readers≥1 is
+      // the cleanest "the screen is on and showing the stream" signal.
+      let pulling = false;
       if (reachable && cp) {
         const st = await getPathState(tv.id);
-        ready = !!st && st.ready;
+        pulling = !!st && st.readers >= 1;
       }
       statuses.push({
         tvId: tv.id,
         effective: res.content,
         source: res.source,
         ruleId: res.ruleId,
-        streamReady: ready,
-        decoderReachable: this.reachable?.(tv.id),
+        streamReady: pulling,
       });
     }
     this.statuses = statuses;
     this.onStatus(this.statuses);
+
+    // Offline/online notifications, only while MediaMTX itself is reachable (so a
+    // platform/MediaMTX blip never makes every screen look offline at once).
+    if (reachable) {
+      this.runAlerts(
+        resolutions.map(({ tv, res }, i) => ({ tv, pulling: statuses[i].streamReady, off: res.content.kind === 'off' })),
+      );
+    }
+  }
+
+  /**
+   * Relay an alert (via the Fabric) when a screen stops pulling its RTSP stream for
+   * more than OFFLINE_MS, and again when it resumes. Screens intentionally set to
+   * "Off" are not monitored. Debounced so brief reconnects (content switches, power
+   * cycles) don't flap. Fires only when a `notify` callback is wired and configured.
+   */
+  private runAlerts(items: { tv: Tv; pulling: boolean; off: boolean }[]): void {
+    if (!this.notify) return;
+    const now = Date.now();
+    const present = new Set(items.map((i) => i.tv.id));
+    for (const id of [...this.alerts.keys()]) if (!present.has(id)) this.alerts.delete(id);
+
+    for (const { tv, pulling, off } of items) {
+      let st = this.alerts.get(tv.id);
+      if (!st) {
+        st = { downSince: null, offlineNotified: false };
+        this.alerts.set(tv.id, st);
+      }
+      const name = (tv.name || 'Screen').slice(0, 60);
+      if (off) {
+        // Intentionally off — not "offline". Clear any pending/asserted state quietly.
+        st.downSince = null;
+        st.offlineNotified = false;
+        continue;
+      }
+      if (pulling) {
+        if (st.offlineNotified) {
+          void this.notify({ title: 'Screen back online', text: `✅ "${name}" is showing its stream again.`, level: 'success' });
+        }
+        st.downSince = null;
+        st.offlineNotified = false;
+      } else {
+        if (st.downSince == null) st.downSince = now;
+        if (now - st.downSince >= this.OFFLINE_MS && !st.offlineNotified) {
+          st.offlineNotified = true;
+          void this.notify({
+            title: 'Screen offline',
+            text: `📺 "${name}" isn't pulling its video stream — the screen or its decoder may be turned off or disconnected.`,
+            level: 'warning',
+          });
+        }
+      }
+    }
   }
 }

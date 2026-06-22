@@ -199,9 +199,9 @@ function NotificationsPanel() {
     <div className="panel glass">
       <h3 className="section-title" style={{ marginTop: 0 }}>Notifications</h3>
       <p className="muted" style={{ marginBottom: '1rem' }}>
-        OpenMasjid Display can alert you when a screen goes offline. The message is sent through OpenMasjidOS to
-        the webhook you set in <b>OpenMasjidOS → Settings → Notifications</b> (Slack, Discord, or a custom URL).
-        Add a decoder IP to each screen (on the <b>Screens</b> page) to turn on monitoring.
+        OpenMasjid Display alerts you when a screen stops pulling its video stream (and again when it’s back) —
+        no setup needed. The message is sent through OpenMasjidOS to the webhook you set in
+        <b> OpenMasjidOS → Settings → Notifications</b> (Slack, Discord, or a custom URL).
       </p>
       <div className="row" style={{ gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn btn--ghost btn--sm" onClick={test} disabled={busy}>{busy ? <><Spinner /> Sending…</> : 'Send a test notification'}</button>

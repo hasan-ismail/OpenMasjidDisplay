@@ -131,13 +131,15 @@ behaves exactly as a standalone install. Full contract in `docs/FABRIC.md`.
   never sees the webhook URL (the platform owns the destination — no SSRF from the app). It **fails soft**:
   no platform / not enabled → `delivered:false` and the app carries on. Used by the screen monitor below.
 
-## Screen (decoder) reachability monitor
+## Screen offline/online alerts
 
-Each screen can store its decoder box's IP. `tvMonitor.ts` probes every screen with an IP every 30s (a
-plain TCP connect — no ICMP/raw socket, so it runs least-privilege; "connected or refused = online,
-timeout = offline"). After 3 consecutive failures (~90s) it relays an **offline** alert through the Fabric,
-and a **back-online** alert on recovery. The confirmed state also rides on `TvStatus.decoderReachable` so the
-panel shows an "Offline" badge. Reachability never affects streaming; it's purely an alert.
+No probe or extra config — we reuse what the system already knows: whether a screen is **pulling its RTSP
+stream**. Each screen's `tv_<id>` path is on-demand, so MediaMTX reports `readers ≥ 1` exactly when a decoder
+is connected and showing the stream (`orchestrator.ts` sets `TvStatus.streamReady` from that). When a screen
+stops pulling for more than ~90s (debounced so brief content switches / power-cycles don't flap), the
+orchestrator relays an **offline** alert through the Fabric, and a **back-online** one when it resumes.
+Screens intentionally set to **Off** are not monitored. The panel shows an "Offline" badge from the same
+signal. Alerts never affect streaming.
 
 ## Security & least privilege
 
