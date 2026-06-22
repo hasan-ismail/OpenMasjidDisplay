@@ -121,9 +121,11 @@ function redactCreds(s: string): string {
 /** One ffmpeg connect-and-read-a-frame attempt over a given RTSP transport. */
 function probeOnce(url: string, transport: string): Promise<{ ok: boolean; message: string }> {
   return new Promise((resolve) => {
+    // Only standard, widely-supported options here — the bundled ffmpeg is an older
+    // build that rejects newer flags (e.g. -rw_timeout → "Option rw_timeout not found",
+    // which made this very test fail). We bound the runtime with our own kill timer.
     const args = [
       '-hide_banner', '-loglevel', 'error',
-      '-rw_timeout', '8000000', // 8s I/O timeout (µs) so a dead host fails fast
       '-protocol_whitelist', 'rtp,rtcp,udp,tcp,rtsp,rtsps,srtp,tls,crypto',
       '-rtsp_transport', transport,
       '-i', url,
