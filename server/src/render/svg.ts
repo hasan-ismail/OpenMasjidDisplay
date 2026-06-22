@@ -83,6 +83,9 @@ interface RawHotspot {
   h: number;
 }
 let HOT: RawHotspot[] | null = null;
+// When true, time colons are drawn dim this frame (the "blink"). Toggled per second
+// in build() from the frame time; the 1fps render gives a gentle 1s-on/1s-off blink.
+let COLON_DIM = false;
 
 function esc(s: string): string {
   return s
@@ -282,6 +285,8 @@ interface TextOpts {
   opacity?: number;
   /** marks this text as click-to-edit in the live editor (collected into a sink) */
   editId?: string;
+  /** clock/countdown time → the colons blink (dim every other second) like a digital clock */
+  blink?: boolean;
 }
 
 function text(x: number, baseline: number, content: string, o: TextOpts): string {
@@ -303,7 +308,13 @@ function text(x: number, baseline: number, content: string, o: TextOpts): string
     const left = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
     HOT.push({ id: o.editId, value: content, x: left - o.size * 0.15, y: baseline - o.size * 0.92, w: w + o.size * 0.3, h: o.size * 1.28 });
   }
-  return `<text ${attrs.join(' ')}>${esc(content)}</text>`;
+  let inner = esc(content);
+  // Blink the colon(s) by dimming just those glyphs (wrapped in a tspan so the digit
+  // positions never move — only its opacity changes between frames).
+  if (o.blink && COLON_DIM && inner.includes(':')) {
+    inner = inner.split(':').join('<tspan fill-opacity="0.12">:</tspan>');
+  }
+  return `<text ${attrs.join(' ')}>${inner}</text>`;
 }
 
 function rect(x: number, y: number, w: number, h: number, r: number, fill: string, extra = ''): string {
@@ -703,7 +714,7 @@ function clockGroup(cx: number, cy: number, size: number, clock: ClockText, show
   const periodPad = size * 0.16;
   const periodW = clock.period ? periodPad + approxWidth(clock.period, periodSize) : 0;
   const startX = cx - (timeW + periodW) / 2;
-  out.push(text(startX, baseline, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'start', letter }));
+  out.push(text(startX, baseline, clock.time, { size, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'start', letter, blink: true }));
   if (clock.period) {
     out.push(text(startX + timeW + periodPad, baseline, clock.period, { size: periodSize, fill: p.textDim, weight: 700, anchor: 'start' }));
   }
@@ -753,7 +764,7 @@ function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms
   if (strW > w * 0.94) numSize *= (w * 0.94) / strW;
   const baseline = cy + numSize * 0.34;
   out.push(text(cx, cy - numSize * 0.5, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
-  out.push(text(cx, baseline, timeStr, { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
+  out.push(text(cx, baseline, timeStr, { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
   return out.join('');
 }
 
@@ -791,7 +802,7 @@ function splitLeftPanel(
   let clockSize = clamp(leftW * 0.2, 30, 92);
   const cw = approxWidth(clockStr, clockSize);
   if (cw > maxW) clockSize = Math.max(22, clockSize * (maxW / cw));
-  out.push(text(leftX + pad, cy + clockSize * 0.82, clockStr, { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'start', letter: -0.5 }));
+  out.push(text(leftX + pad, cy + clockSize * 0.82, clockStr, { size: clockSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'start', letter: -0.5, blink: true }));
   cy += clockSize * 1.06;
   if (tt.showDates) {
     let dateSize = clamp(leftW * 0.045, 11, 20);
@@ -909,7 +920,7 @@ function spotlightView(
   let clkSize = clamp(barH * 0.52, 24, 72);
   const cw = approxWidth(clockStr, clkSize);
   if (cw > W * 0.42) clkSize *= (W * 0.42) / cw;
-  out.push(text(W - P, barY + barH * 0.46, clockStr, { size: clkSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'end', letter: -0.5 }));
+  out.push(text(W - P, barY + barH * 0.46, clockStr, { size: clkSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'end', letter: -0.5, blink: true }));
   if (tt.showDates) {
     const dstr = hij ? `${hij}  ·  ${greg}` : greg;
     out.push(text(W - P, barY + barH * 0.86, dstr, { size: clamp(barH * 0.22, 12, 26), fill: p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
@@ -926,27 +937,30 @@ function spotlightView(
   out.push(glass(heroX, heroTop, heroW, heroH, Math.min(heroW, heroH) * 0.05, { glow: p.primary }));
   const cx = W / 2;
 
-  out.push(text(cx, heroTop + heroH * 0.17, (L.next ?? 'Next prayer').toUpperCase(), { size: clamp(heroH * 0.07, 12, 28), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 4 }));
-  out.push(text(cx, heroTop + heroH * 0.37, nextName.toUpperCase(), { size: clamp(heroH * 0.19, 28, 104), fill: p.goldSoft, family: FONT_DISPLAY, weight: 700, anchor: 'middle', letter: 1 }));
+  // Vertical bands with deliberate gaps so the small labels never sit on top of the
+  // big time. Eyebrow → next-prayer name → small label → big time → Adhan/Iqamah line.
+  const eyeSize = clamp(heroH * 0.065, 11, 26);
+  out.push(text(cx, heroTop + heroH * 0.15, (L.next ?? 'Next prayer').toUpperCase(), { size: eyeSize, fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 4 }));
+  let nameSize = clamp(heroH * 0.17, 26, 96);
+  const nameW = approxWidth(nextName, nameSize);
+  if (nameW > heroW * 0.8) nameSize *= (heroW * 0.8) / nameW;
+  out.push(text(cx, heroTop + heroH * 0.34, nextName.toUpperCase(), { size: nameSize, fill: p.goldSoft, family: FONT_DISPLAY, weight: 700, anchor: 'middle', letter: 1 }));
 
-  if (tt.showCountdown) {
-    let ns = clamp(heroH * 0.27, 30, 134);
-    const timeStr = `${pad2(hms[0])}:${pad2(hms[1])}:${pad2(hms[2])}`;
-    const sw = approxWidth(timeStr, ns);
-    if (sw > heroW * 0.72) ns *= (heroW * 0.72) / sw;
-    out.push(text(cx, heroTop + heroH * 0.55, `${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(heroH * 0.05, 10, 22), fill: p.textDim, weight: 700, anchor: 'middle', letter: 3 }));
-    out.push(text(cx, heroTop + heroH * 0.55 + ns * 0.52, timeStr, { size: ns, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
-  } else {
-    // No countdown → feature the next Iqamah (or Adhan) time big instead.
-    const big = fmtShort(next.iqamah ?? next.adhan, tt.timeFormat);
-    out.push(text(cx, heroTop + heroH * 0.55, ((next.iqamah != null ? L.iqamah : L.athan) ?? '').toUpperCase(), { size: clamp(heroH * 0.05, 10, 22), fill: p.textDim, weight: 700, anchor: 'middle', letter: 3 }));
-    out.push(text(cx, heroTop + heroH * 0.55 + clamp(heroH * 0.27, 30, 134) * 0.52, big, { size: clamp(heroH * 0.27, 30, 134), fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
-  }
+  const labSize = clamp(heroH * 0.05, 10, 22);
+  let bigSize = clamp(heroH * 0.22, 28, 124);
+  const bigStr = tt.showCountdown ? `${pad2(hms[0])}:${pad2(hms[1])}:${pad2(hms[2])}` : fmtShort(next.iqamah ?? next.adhan, tt.timeFormat);
+  const bigLabel = tt.showCountdown
+    ? `${L.athan?.toUpperCase() ?? 'ADHAN'} IN`
+    : ((next.iqamah != null ? L.iqamah : L.athan) ?? '').toUpperCase();
+  const bw = approxWidth(bigStr, bigSize);
+  if (bw > heroW * 0.72) bigSize *= (heroW * 0.72) / bw;
+  out.push(text(cx, heroTop + heroH * 0.49, bigLabel, { size: labSize, fill: p.textDim, weight: 700, anchor: 'middle', letter: 3 }));
+  out.push(text(cx, heroTop + heroH * 0.69, bigStr, { size: bigSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: tt.showCountdown }));
 
-  // Adhan · Iqamah times line.
+  // Adhan · Iqamah times line (nbsp around the dot so SVG doesn't collapse the gap).
   const aStr = `${L.athan ?? 'Adhan'} ${fmtShort(next.adhan, tt.timeFormat)}`;
   const iStr = next.iqamah != null ? `${L.iqamah ?? 'Iqamah'} ${fmtShort(next.iqamah, tt.timeFormat)}` : '';
-  out.push(text(cx, heroTop + heroH * 0.85, iStr ? `${aStr}      ${iStr}` : aStr, { size: clamp(heroH * 0.075, 13, 30), fill: p.text, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5 }));
+  out.push(text(cx, heroTop + heroH * 0.85, iStr ? `${aStr}  ·  ${iStr}` : aStr, { size: clamp(heroH * 0.07, 13, 28), fill: p.text, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 0.5 }));
 
   // Thin progress bar from the current prayer to the next (wraps correctly past midnight).
   const activeRow = m.rows.find((r) => r.key === m.activeKey);
@@ -991,6 +1005,9 @@ export interface RenderOpts {
    *  photo is light enough that the theme's light text would wash out (→ use dark text).
    *  Only consulted when the timetable's textColor is "auto" (empty). */
   bgLight?: boolean;
+  /** auto accent: a vivid colour the worker pulled from the wallpaper. Used as the
+   *  primary colour only when the user hasn't picked a manual accent. */
+  autoAccent?: string;
   /** video pipeline: draw only the ticker strip (ffmpeg overlays the moving text) */
   tickerBandOnly?: boolean;
   /** when present, click-to-edit text regions are collected here (no extra cost
@@ -1024,8 +1041,15 @@ export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}
 
 function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const { width: W, height: H } = dimsFor(tt.orientation, tt.quality);
+  // Blink the time colons once a second (dim on odd seconds).
+  COLON_DIM = Math.floor(now.getTime() / 1000) % 2 === 1;
   const hasImage = !!opts.bg;
-  const p = applyTextColor(getPalette(tt.themeId, tt.accent), tt.textColor, hasImage, !!opts.bgLight);
+  let p = applyTextColor(getPalette(tt.themeId, tt.accent), tt.textColor, hasImage, !!opts.bgLight);
+  // Auto accent from the wallpaper (only when no manual accent is set).
+  if (!tt.accent && opts.autoAccent && /^#?[0-9a-f]{6}$/i.test(opts.autoAccent)) {
+    const a = opts.autoAccent.startsWith('#') ? opts.autoAccent : `#${opts.autoAccent}`;
+    p = { ...p, primary: a, primarySoft: lighten(a, 0.2), pattern: a };
+  }
   const L = labels(tt.language, tt.labels);
   const logo = opts.logo ?? null;
 

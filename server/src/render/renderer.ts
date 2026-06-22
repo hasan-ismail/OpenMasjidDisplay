@@ -46,11 +46,18 @@ export interface TickerSpec {
 /** Build the video filter. The scrolling ticker is drawn by ffmpeg with drawtext
  *  AFTER fps=15, so it animates at the output frame rate (smooth) even though the
  *  SVG frames only update once per second. The SVG paints just the strip. */
+// 20 fps for the ticker: smoother than 15 but still light on a 2-core box (the
+// heavy SVG render stays at 1 fps on the worker; ffmpeg just duplicates frames and
+// animates the text). Quantising the scroll to a whole number of pixels PER FRAME is
+// what removes the judder — ffmpeg snaps drawtext x to integer pixels each frame, so
+// a non-integer px/frame produced an uneven 1px,2px,1px,2px… stutter before.
+const TICKER_FPS = 20;
 function timetableVf(d: Dims, ticker: TickerSpec | null): string {
   if (!ticker) return 'format=yuv420p,fps=15';
   const { y, bandH, fs } = tickerLayout(d.width, d.height);
   const size = Math.round(fs);
-  const speed = Math.round(clamp(Math.min(d.width, d.height) * 0.04, 30, 90)); // px/sec
+  const wanted = clamp(Math.min(d.width, d.height) * 0.045, 36, 110); // px/sec target
+  const pxPerFrame = Math.max(1, Math.round(wanted / TICKER_FPS)); // exact integer px/frame → no jitter
   const gap = Math.round(size * 4);
   const period = `tw+${gap}`; // tw = real text width at render time → seamless tiling
   const yExpr = `${Math.round(y + bandH / 2)}-th/2`;
@@ -60,11 +67,13 @@ function timetableVf(d: Dims, ticker: TickerSpec | null): string {
   const copies = Math.min(20, Math.max(3, Math.ceil(d.width / periodEst) + 2));
   const dt: string[] = [];
   for (let k = 0; k < copies; k++) {
-    const x = `w-mod(t*${speed}\\,${period})${k > 0 ? `-${k}*(${period})` : ''}`;
+    // floor(t*fps) gives an integer frame index, so x steps by exactly pxPerFrame each
+    // frame (no sub-pixel rounding wobble); the tiling copies hide the wrap.
+    const x = `w-mod(floor(t*${TICKER_FPS})*${pxPerFrame}\\,${period})${k > 0 ? `-${k}*(${period})` : ''}`;
     // expansion=none: treat the message file as literal text (no %{...} / escape interpretation).
     dt.push(`drawtext=fontfile='${ticker.fontfile}':textfile='${ticker.textfile}':expansion=none:fontsize=${size}:fontcolor=white:x=${x}:y=${yExpr}`);
   }
-  return `fps=15,${dt.join(',')},format=yuv420p`;
+  return `fps=${TICKER_FPS},${dt.join(',')},format=yuv420p`;
 }
 
 function timetableArgs(d: Dims, target: string, ticker: TickerSpec | null): string[] {

@@ -78,7 +78,10 @@ function saveAsset(id: string, kind: 'bg' | 'logo', mime: string, data: Buffer):
   const ext = EXT_BY_MIME[mime] ?? '.png';
   fs.mkdirSync(uploadsDir(), { recursive: true });
   removeAsset(id, kind); // clear any prior file (the extension may change)
-  const name = `${prefix}${ext}`;
+  // A fresh random suffix every upload so REPLACING an image yields a NEW filename.
+  // Otherwise a replacement reuses `<id>.<ext>`, the stored value never changes, and
+  // the editor preview (keyed on it) — plus any browser cache — shows the old image.
+  const name = `${prefix}.${crypto.randomBytes(4).toString('hex')}${ext}`;
   fs.writeFileSync(path.join(uploadsDir(), name), data);
   cache.delete(name);
   return name;

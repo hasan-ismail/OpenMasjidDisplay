@@ -424,6 +424,9 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
               </label>
               {f.accent && <button type="button" className="btn btn--ghost btn--sm" onClick={() => set('accent', undefined)}>Use theme colour</button>}
             </div>
+            {!f.accent && f.backgroundImage && (
+              <p className="hint" style={{ marginBlockStart: '0.4rem' }}>Matched to your wallpaper automatically. Pick a colour above to set your own. (Text colour also adapts to keep it readable.)</p>
+            )}
           </Field>
 
           <Field label="Text colour">
