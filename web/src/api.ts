@@ -115,6 +115,9 @@ export const api = {
   createSchedule: (b: Partial<ScheduleRule>) => req<ScheduleRule>('POST', '/api/schedules', b),
   updateSchedule: (id: string, b: Partial<ScheduleRule>) => req<ScheduleRule>('PUT', `/api/schedules/${id}`, b),
   deleteSchedule: (id: string) => req('DELETE', `/api/schedules/${id}`),
+
+  testNotification: () =>
+    req<{ baseUrlSet: boolean; hasSecret: boolean; baseUrlLoopback: boolean; delivered: boolean; reason?: string }>('POST', '/api/notify-test'),
 };
 
 /** The simple mobile volunteer page (served on its own port; PIN-gated). */

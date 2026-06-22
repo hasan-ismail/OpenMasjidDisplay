@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import type { AppState, Settings } from '../types';
-import { Field, Toggle, IconCheck, useToast } from '../ui';
+import { Field, Toggle, Spinner, IconCheck, useToast } from '../ui';
 import { usePrefs, prefsStore, WALLPAPERS, fetchOmosAppearance } from '../prefs';
 import { timezoneOptions } from '../timezones';
 
@@ -138,6 +138,8 @@ export function SettingsPage({ state, refetch }: Props) {
 
       <VolunteerPanel state={state} refetch={refetch} />
 
+      <NotificationsPanel />
+
       <div className="panel glass">
         <h3 className="section-title" style={{ marginTop: 0 }}>Connecting a screen</h3>
         <p className="muted" style={{ marginBottom: '1rem' }}>
@@ -151,6 +153,64 @@ export function SettingsPage({ state, refetch }: Props) {
       </div>
 
       <button className="btn btn--primary" onClick={save} disabled={busy}><IconCheck size={16} /> Save settings</button>
+    </div>
+  );
+}
+
+type NotifyTest = { baseUrlSet: boolean; hasSecret: boolean; baseUrlLoopback: boolean; delivered: boolean; reason?: string };
+
+/** Map a notify-test result to one clear, friendly sentence + ok/err. */
+function notifyAdvice(r: NotifyTest): { ok: boolean; msg: string } {
+  if (r.delivered) return { ok: true, msg: 'Sent! Check your Slack / Discord / webhook for the test message.' };
+  if (!r.baseUrlSet || !r.hasSecret)
+    return { ok: false, msg: 'This app hasn’t received its OpenMasjidOS credentials yet. In OpenMasjidOS, update (or remove and reinstall) OpenMasjid Display so the platform grants it permission to send alerts.' };
+  if (r.baseUrlLoopback)
+    return { ok: false, msg: 'The platform address is set to “localhost”, which this app can’t reach from its own container. On the OpenMasjidOS side, set OPENMASJID_BASE_URL to the server’s network address.' };
+  if (r.reason === 'disabled')
+    return { ok: false, msg: 'OpenMasjidOS notifications aren’t turned on. In OpenMasjidOS → Settings → Notifications, add a Slack / Discord / webhook destination.' };
+  if (r.reason === 'http_403')
+    return { ok: false, msg: 'OpenMasjidOS hasn’t granted this app permission to send notifications. Update or reinstall OpenMasjid Display in OpenMasjidOS so it re-reads its permissions.' };
+  if (r.reason === 'rate_limited') return { ok: false, msg: 'Too many messages just now — wait a minute and try again.' };
+  if (r.reason === 'unreachable')
+    return { ok: false, msg: 'Couldn’t reach OpenMasjidOS from this app. Check they’re on the same network and the platform is running.' };
+  return { ok: false, msg: `Couldn’t send (reason: ${r.reason ?? 'unknown'}).` };
+}
+
+/** Diagnose Fabric notifications — alerts (e.g. a screen going offline) relay through
+ *  OpenMasjidOS to the masjid's configured webhook; this sends a test and explains. */
+function NotificationsPanel() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [advice, setAdvice] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const test = async () => {
+    setBusy(true);
+    setAdvice(null);
+    try {
+      setAdvice(notifyAdvice(await api.testNotification()));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not run the test.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="panel glass">
+      <h3 className="section-title" style={{ marginTop: 0 }}>Notifications</h3>
+      <p className="muted" style={{ marginBottom: '1rem' }}>
+        OpenMasjid Display can alert you when a screen goes offline. The message is sent through OpenMasjidOS to
+        the webhook you set in <b>OpenMasjidOS → Settings → Notifications</b> (Slack, Discord, or a custom URL).
+        Add a decoder IP to each screen (on the <b>Screens</b> page) to turn on monitoring.
+      </p>
+      <div className="row" style={{ gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn btn--ghost btn--sm" onClick={test} disabled={busy}>{busy ? <><Spinner /> Sending…</> : 'Send a test notification'}</button>
+        {advice && (
+          <span className="hint" style={{ color: advice.ok ? 'var(--ok, #2bbf90)' : 'var(--danger, #e5736b)', maxWidth: 560 }}>
+            {advice.ok ? '✓ ' : '✗ '}{advice.msg}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

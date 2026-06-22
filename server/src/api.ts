@@ -15,7 +15,7 @@ import {
   setCookieHeader,
   clearCookieHeader,
 } from './auth';
-import { platformUser, ssoConfigured } from './fabric';
+import { platformUser, ssoConfigured, notify } from './fabric';
 import { LoginLimiter } from './rateLimit';
 import { THEMES } from './render/theme';
 import {
@@ -251,6 +251,23 @@ export function createApi(deps: Deps) {
 
       if (pathname === '/api/state' && method === 'GET') {
         return sendJson(res, 200, statePayload(store, orchestrator));
+      }
+
+      // Diagnose Fabric notifications: report what's configured + send a test alert,
+      // so the admin can see exactly why screen-offline alerts aren't arriving.
+      if (pathname === '/api/notify-test' && method === 'POST') {
+        const base = config.omosBaseUrl;
+        const hasSecret = !!config.omosAppSecret;
+        const baseUrlLoopback = /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[?::1)/i.test(base);
+        let result: { delivered: boolean; reason?: string } = { delivered: false, reason: 'no-fabric' };
+        if (base && hasSecret) {
+          result = await notify({
+            title: 'OpenMasjid Display — test',
+            text: '✅ Test alert from OpenMasjid Display. If you see this, screen-offline alerts will reach you here.',
+            level: 'info',
+          });
+        }
+        return sendJson(res, 200, { baseUrlSet: !!base, hasSecret, baseUrlLoopback, ...result });
       }
 
       if (pathname === '/api/settings' && method === 'PUT') {

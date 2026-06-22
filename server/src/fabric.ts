@@ -61,11 +61,17 @@ export async function notify(payload: NotifyPayload): Promise<{ delivered: boole
       redirect: 'error',
     });
     clearTimeout(t);
-    if (!res.ok) return { delivered: false, reason: `http_${res.status}` };
+    if (!res.ok) {
+      log.warn(`Fabric notify not delivered: platform returned HTTP ${res.status} (is this app allowed to send notifications, and updated in OpenMasjidOS?)`);
+      return { delivered: false, reason: `http_${res.status}` };
+    }
     const j = (await res.json().catch(() => ({}))) as { delivered?: boolean; reason?: string };
+    if (j.delivered !== true) {
+      log.warn(`Fabric notify not delivered (reason: ${j.reason ?? 'unknown'}) — e.g. notifications not enabled in OpenMasjidOS Settings.`);
+    }
     return { delivered: j.delivered === true, reason: j.reason };
   } catch (err) {
-    log.debug(`fabric notify failed: ${err instanceof Error ? err.message : err}`);
+    log.warn(`Fabric notify could not reach the platform at ${config.omosBaseUrl || '(unset)'}: ${err instanceof Error ? err.message : err}`);
     return { delivered: false, reason: 'unreachable' };
   }
 }
