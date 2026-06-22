@@ -31,6 +31,7 @@ import {
   copyAsset,
 } from './render/background';
 import { renderPreviewPng, renderPreviewMeta } from './render/renderPool';
+import { probeSource } from './render/renderer';
 import { parseIqamahCsv, toCsv, templateCsv, normalizeIqamahYear } from './iqamahCsv';
 import {
   normTimetable,
@@ -499,6 +500,15 @@ export function createApi(deps: Deps) {
       }
 
       // ---- Sources ---------------------------------------------------------
+      // Diagnostic: actually try to connect to a camera/stream URL and report why it
+      // won't load. Sanitised through normSource so only stream schemes are probed.
+      if (pathname === '/api/sources/test' && method === 'POST') {
+        const body = await readBody(req);
+        const url = normSource({ url: (body as { url?: unknown }).url }).url;
+        if (!url) return sendJson(res, 400, { error: 'Enter a camera link starting with rtsp:// or rtsps://.' });
+        const result = await probeSource(url);
+        return sendJson(res, 200, result);
+      }
       if (pathname === '/api/sources' && method === 'POST') {
         if (atCap(res, store.db.sources)) return;
         const body = await readBody(req);

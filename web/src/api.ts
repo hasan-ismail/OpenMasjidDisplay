@@ -103,6 +103,7 @@ export const api = {
   createSource: (b: Partial<Source>) => req<Source>('POST', '/api/sources', b),
   updateSource: (id: string, b: Partial<Source>) => req<Source>('PUT', `/api/sources/${id}`, b),
   deleteSource: (id: string) => req('DELETE', `/api/sources/${id}`),
+  testSource: (url: string) => req<{ ok: boolean; transport?: string; message: string }>('POST', '/api/sources/test', { url }),
 
   createTv: (b: Partial<Tv>) => req<Tv>('POST', '/api/tvs', b),
   updateTv: (id: string, b: Partial<Tv>) => req<Tv>('PUT', `/api/tvs/${id}`, b),

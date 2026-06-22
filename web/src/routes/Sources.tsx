@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import type { AppState, Source } from '../types';
-import { Modal, Field, Toggle, IconPlus, IconEdit, IconTrash, IconCamera, useToast } from '../ui';
+import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCamera, useToast } from '../ui';
 
 interface Props {
   state: AppState;
@@ -110,6 +110,24 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
   const [quality, setQuality] = useState<Source['quality']>(src?.quality ?? '720p');
   const [enabled, setEnabled] = useState(src?.enabled ?? true);
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; transport?: string; message: string } | null>(null);
+
+  const test = async () => {
+    if (!/^rtsps?:\/\//i.test(url.trim()) && !/^rtmps?:\/\//i.test(url.trim())) {
+      toast('Enter a camera link starting with rtsp:// or rtsps:// first.', 'error');
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(await api.testSource(url.trim()));
+    } catch (e) {
+      setTestResult({ ok: false, message: e instanceof Error ? e.message : 'Test failed.' });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const save = async () => {
     if (!/^rtsps?:\/\//i.test(url.trim()) && !/^rtmps?:\/\//i.test(url.trim())) {
@@ -156,6 +174,17 @@ function SourceModal({ src, onClose, onSaved }: { src: Source | null; onClose: (
         <p className="hint" style={{ marginBlockStart: '0.4rem', lineHeight: 1.5 }}>
           <strong>UniFi cameras:</strong> in UniFi Protect open the camera’s settings, turn on <strong>RTSP</strong> (it’s off by default), and paste the link it shows — the secure <code>rtsps://…</code> one works too. If a secure link won’t connect, switch the option below to <em>Most compatible</em>.
         </p>
+        <div className="row" style={{ gap: '0.6rem', marginBlockStart: '0.5rem', alignItems: 'center' }}>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={test} disabled={testing}>{testing ? <><Spinner /> Testing…</> : 'Test connection'}</button>
+          {testResult && (
+            <span className="hint" style={{ color: testResult.ok ? 'var(--ok, #2bbf90)' : 'var(--danger, #e5736b)' }}>
+              {testResult.ok ? `✓ ${testResult.message}` : `✗ ${testResult.message}`}
+            </span>
+          )}
+        </div>
+        {testResult && testResult.ok && testResult.transport === 'udp' && (
+          <p className="hint" style={{ marginBlockStart: '0.3rem' }}>This camera answered over UDP. If a screen won’t play it, choose <em>Most compatible (re-encode)</em> below.</p>
+        )}
       </Field>
       <div className="grid2">
         <Field label="Compatibility" hint="'Most compatible' re-encodes so it plays on more screens (more processor — best on a mini-PC).">

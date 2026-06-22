@@ -118,6 +118,69 @@ function redactCreds(s: string): string {
   return s.replace(/(\w+:\/\/)[^@\s/]+@/g, '$1***@');
 }
 
+/** One ffmpeg connect-and-read-a-frame attempt over a given RTSP transport. */
+function probeOnce(url: string, transport: string): Promise<{ ok: boolean; message: string }> {
+  return new Promise((resolve) => {
+    const args = [
+      '-hide_banner', '-loglevel', 'error',
+      '-rw_timeout', '8000000', // 8s I/O timeout (µs) so a dead host fails fast
+      '-protocol_whitelist', 'rtp,rtcp,udp,tcp,rtsp,rtsps,srtp,tls,crypto',
+      '-rtsp_transport', transport,
+      '-i', url,
+      '-map', '0:v:0', '-frames:v', '1', '-f', 'null', '-',
+    ];
+    let err = '';
+    let done = false;
+    let proc: ChildProcess | null = null;
+    const finish = (ok: boolean, message: string) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        proc?.kill('SIGKILL');
+      } catch {
+        /* already gone */
+      }
+      resolve({ ok, message });
+    };
+    const timer = setTimeout(
+      () => finish(false, `No response over ${transport.toUpperCase()} within 8s — check the address/port and that RTSP is turned on at the camera.`),
+      8_000,
+    );
+    try {
+      proc = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (e) {
+      return finish(false, `Could not start ffmpeg: ${e instanceof Error ? e.message : e}`);
+    }
+    proc.stderr?.on('data', (d) => {
+      err += d.toString();
+      if (err.length > 4000) err = err.slice(-4000);
+    });
+    proc.on('error', (e) => finish(false, `Could not start ffmpeg: ${e.message}`));
+    proc.on('close', (code) => {
+      if (code === 0) return finish(true, 'ok');
+      const tail = redactCreds(err.trim().split('\n').filter(Boolean).slice(-3).join(' ')).slice(0, 400);
+      finish(false, tail || `ffmpeg could not read the stream (exit ${code}).`);
+    });
+  });
+}
+
+/** Diagnostic: actually connect to a camera/source URL and try to read one frame, so
+ *  the panel can show WHY it won't load (auth, TLS cert, transport, wrong port, SRTP).
+ *  Tries TCP then — for rtsp/rtsps — UDP, since some cameras (e.g. UniFi with SRTP)
+ *  only work over one transport. Reports which transport succeeded. */
+export async function probeSource(rawUrl: string): Promise<{ ok: boolean; transport?: string; message: string }> {
+  const url = rawUrl.trim();
+  const transports = /^rtsps?:\/\//i.test(url) ? ['tcp', 'udp'] : ['tcp'];
+  let lastErr = '';
+  for (const t of transports) {
+    const r = await probeOnce(url, t);
+    if (r.ok) return { ok: true, transport: t, message: `Connected and read video over ${t.toUpperCase()}.` };
+    lastErr = r.message;
+  }
+  return { ok: false, message: lastErr || 'Could not connect to the camera.' };
+}
+
 /** Common ffmpeg lifecycle with self-healing restart (capped exponential backoff). */
 abstract class FfmpegPipeline {
   protected proc: ChildProcess | null = null;
