@@ -57,6 +57,7 @@ export const api = {
 
   createTimetable: (b: Partial<Timetable>) => req<Timetable>('POST', '/api/timetables', b),
   updateTimetable: (id: string, b: Partial<Timetable>) => req<Timetable>('PUT', `/api/timetables/${id}`, b),
+  duplicateTimetable: (id: string) => req<Timetable>('POST', `/api/timetables/${id}/duplicate`),
   deleteTimetable: (id: string) => req('DELETE', `/api/timetables/${id}`),
   uploadBackground: (id: string, dataUrl: string) =>
     req<Timetable>('POST', `/api/timetables/${id}/background`, { data: dataUrl }),

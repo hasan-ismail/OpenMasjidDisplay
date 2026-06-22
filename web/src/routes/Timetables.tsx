@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage } from '../types';
-import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconClock, IconExpand, useToast } from '../ui';
+import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCopy, IconClock, IconExpand, useToast } from '../ui';
 import { timezoneOptions } from '../timezones';
 
 interface Props {
@@ -39,6 +39,22 @@ export function Timetables({ state, refetch }: Props) {
     }
   };
 
+  const [dupId, setDupId] = useState<string | null>(null);
+  const duplicate = async (tt: Timetable) => {
+    setDupId(tt.id);
+    try {
+      const copy = await api.duplicateTimetable(tt.id);
+      await refetch();
+      setTick((n) => n + 1);
+      toast('Duplicated — opening the copy to edit.');
+      setEdit(copy); // jump straight into the copy so the small tweak is one step
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not duplicate the timetable.', 'error');
+    } finally {
+      setDupId(null);
+    }
+  };
+
   return (
     <div>
       <div className="page-head row-between">
@@ -66,6 +82,7 @@ export function Timetables({ state, refetch }: Props) {
               </div>
               <div className="row" style={{ gap: '0.2rem' }}>
                 <button className="icon-btn" aria-label="Edit" onClick={() => setEdit(tt)}><IconEdit size={16} /></button>
+                <button className="icon-btn" aria-label="Duplicate" title="Duplicate" disabled={dupId === tt.id} onClick={() => duplicate(tt)}>{dupId === tt.id ? <Spinner /> : <IconCopy size={16} />}</button>
                 <button className="icon-btn" aria-label="Delete" onClick={() => setConfirm(tt)}><IconTrash size={16} /></button>
               </div>
             </div>

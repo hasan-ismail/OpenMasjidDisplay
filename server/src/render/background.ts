@@ -116,6 +116,21 @@ export function isAllowedImageMime(mime: string): boolean {
   return mime in EXT_BY_MIME;
 }
 
+/** Copy an existing upload to a NEW timetable's id (for duplicating a timetable),
+ *  returning the new filename — so the copy owns its own files and deleting the
+ *  original never affects it. Returns '' if the source is missing. */
+export function copyAsset(srcFile: string, newId: string, kind: 'bg' | 'logo' | 'ann'): string {
+  const info = uploadFilePath(srcFile);
+  if (!info) return '';
+  let data: Buffer;
+  try {
+    data = fs.readFileSync(info.path);
+  } catch {
+    return '';
+  }
+  return kind === 'ann' ? saveAnnouncement(newId, info.mime, data) : saveAsset(newId, kind, info.mime, data);
+}
+
 /** The full path of an uploaded file if its name is safe and it exists, else null
  *  (used to stream announcement thumbnails to the editor). */
 export function uploadFilePath(file: string): { path: string; mime: string } | null {

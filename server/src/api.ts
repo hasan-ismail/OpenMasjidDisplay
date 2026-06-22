@@ -28,6 +28,7 @@ import {
   removeAllAnnouncements,
   uploadFilePath,
   isAllowedImageMime,
+  copyAsset,
 } from './render/background';
 import { renderPreviewPng, renderPreviewMeta } from './render/renderPool';
 import { parseIqamahCsv, toCsv, templateCsv, normalizeIqamahYear } from './iqamahCsv';
@@ -287,6 +288,27 @@ export function createApi(deps: Deps) {
         const tt = normTimetable(body);
         store.update((db) => void db.timetables.push(tt));
         return sendJson(res, 200, tt);
+      }
+      // Duplicate a timetable (so a near-identical screen needs only a small tweak).
+      const dupMatch = /^\/api\/timetables\/([\w-]+)\/duplicate$/.exec(pathname);
+      if (dupMatch && method === 'POST') {
+        if (atCap(res, store.db.timetables)) return;
+        const src = store.db.timetables.find((t) => t.id === dupMatch[1]);
+        if (!src) return sendJson(res, 404, { error: 'Timetable not found.' });
+        // normTimetable (no base) gives a fresh id + copies every form field; we then
+        // graft back the endpoint-managed bits, copying uploaded files to the new id so
+        // the duplicate owns its own assets (deleting the original can't affect it).
+        const copy = normTimetable({ ...src, name: `${src.name} (copy)`.slice(0, 80) });
+        if (src.iqamahYear) copy.iqamahYear = JSON.parse(JSON.stringify(src.iqamahYear));
+        copy.backgroundImage = src.backgroundImage ? copyAsset(src.backgroundImage, copy.id, 'bg') : '';
+        copy.logoImage = src.logoImage ? copyAsset(src.logoImage, copy.id, 'logo') : '';
+        if (copy.announcements?.images?.length) {
+          copy.announcements.images = (src.announcements?.images ?? [])
+            .map((f) => copyAsset(f, copy.id, 'ann'))
+            .filter(Boolean);
+        }
+        store.update((db) => void db.timetables.push(copy));
+        return sendJson(res, 200, copy);
       }
       const ttMatch = /^\/api\/timetables\/([\w-]+)$/.exec(pathname);
       if (ttMatch) {
