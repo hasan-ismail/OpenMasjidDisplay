@@ -80,7 +80,7 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.18.0
+    ref: v0.18.1
 ```
 
 ### No install-time settings
@@ -108,9 +108,6 @@ Full decoder guidance and troubleshooting: [docs/RTSP_SETUP.md](docs/RTSP_SETUP.
 - Relaying a camera "Direct" costs almost no CPU. The "Most compatible" (re-encode) option is heavier — use
   it on a mini-PC, or only where a screen won't play the camera directly.
 - RTSP is forced to **TCP** for the widest, most firewall-friendly compatibility with commodity decoders.
-- **Off-site screens** (another building over SD-WAN/VPN) work over the same RTSP link. For a timetable on a
-  slow remote line, turn on **Low bandwidth** in the timetable editor — a near-static timetable then fits in
-  about **0.45 Mbps** at 720p. See [docs/RTSP_SETUP.md](docs/RTSP_SETUP.md#off-site-screens-over-sd-wan--vpn--the-internet).
 
 ## Run / build from source
 

@@ -128,7 +128,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
   }
   return {
     id: '', name: 'New timetable', themeId: 'emerald', accent: undefined, textColor: '',
-    orientation: 'landscape', quality: state.settings.defaultQuality, lowBandwidth: false, layout: 'centered', layoutCarousel: false,
+    orientation: 'landscape', quality: state.settings.defaultQuality, layout: 'centered', layoutCarousel: false,
     masjidName: state.timetables[0]?.masjidName ?? 'Our Masjid',
     latitude: '', longitude: '',
     method: 'MWL', fajrAngle: 18, ishaAngle: 17, asrMadhab: 'Hanafi', timezone: state.settings.scheduleTimezone ?? '',
@@ -417,13 +417,6 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
                 <option value="1080p">1080p</option>
               </select>
             </Field>
-          </div>
-
-          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.9rem' }}>
-            <span className="label" style={{ margin: 0 }}>
-              Low bandwidth (off-site screen) <span className="hint">— shrinks this stream to fit a screen at another site on a slow / SD-WAN internet link (≈0.5 Mbps at 720p)</span>
-            </span>
-            <Toggle checked={!!f.lowBandwidth} onChange={(v) => set('lowBandwidth', v)} label="Low bandwidth" />
           </div>
 
           <Field label="Theme colour">
