@@ -179,7 +179,12 @@ function ScreenCard({
       <div className="screen-card__head">
         <span className={`status-dot${ready ? '' : ' status-dot--idle'}`} title={ready ? 'A screen is connected' : 'No screen connected yet'} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="screen-name">{tv.name}</div>
+          <div className="screen-name">
+            {tv.name}
+            {status?.decoderReachable === false && (
+              <span className="tag" style={{ marginInlineStart: '0.5rem', background: 'rgba(229,115,107,0.16)', color: '#e5736b' }} title={`No response from the decoder${tv.decoderIp ? ` (${tv.decoderIp})` : ''}`}>Offline</span>
+            )}
+          </div>
           {tv.room && <div className="screen-room">{tv.room}</div>}
         </div>
         <button className="icon-btn" aria-label="Edit screen" onClick={onEdit}><IconEdit size={16} /></button>
@@ -237,13 +242,19 @@ function TvModal({
   const toast = useToast();
   const [name, setName] = useState(tv?.name ?? '');
   const [room, setRoom] = useState(tv?.room ?? '');
+  const [decoderIp, setDecoderIp] = useState(tv?.decoderIp ?? '');
   const [content, setContent] = useState<ContentRef>(tv?.defaultContent ?? { kind: 'off' });
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
+    // The decoder IP is required when adding a screen so we can monitor it.
+    if (!tv && !decoderIp.trim()) {
+      toast('Enter the decoder box’s IP address so we can alert you if the screen goes offline.', 'error');
+      return;
+    }
     setBusy(true);
     try {
-      const body = { name: name.trim() || 'Screen', room: room.trim(), defaultContent: content };
+      const body = { name: name.trim() || 'Screen', room: room.trim(), decoderIp: decoderIp.trim(), defaultContent: content };
       if (tv) await api.updateTv(tv.id, body);
       else await api.createTv(body);
       onSaved();
@@ -271,6 +282,9 @@ function TvModal({
         <Field label="Screen name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Main hall TV" /></Field>
         <Field label="Room (optional)"><input className="input" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="Main hall" /></Field>
       </div>
+      <Field label="Decoder IP address" hint="The IP of this screen’s decoder box (e.g. 192.168.1.42). We ping it every 30s and alert you — via your OpenMasjidOS notifications — if it drops offline, and again when it’s back.">
+        <input className="input" value={decoderIp} onChange={(e) => setDecoderIp(e.target.value)} placeholder="192.168.1.42" inputMode="decimal" />
+      </Field>
       <Field label="Normally shows" hint="What this screen returns to when no schedule or manual choice applies.">
         <ContentPicker options={options} value={content} onChange={setContent} />
       </Field>

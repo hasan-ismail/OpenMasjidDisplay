@@ -95,6 +95,8 @@ export interface Tv {
   id: string;
   name: string;
   room?: string;
+  /** IP/hostname of this screen's decoder box, for the offline ping monitor */
+  decoderIp?: string;
   defaultContent: ContentRef;
   override?: { content: ContentRef; until: number | null } | null;
   createdAt: string;
@@ -125,6 +127,8 @@ export interface TvStatus {
   source: 'override' | 'schedule' | 'default';
   ruleId?: string;
   streamReady: boolean;
+  /** decoder reachability: true=online, false=offline, undefined=not monitored */
+  decoderReachable?: boolean;
 }
 
 export interface ThemePreset {

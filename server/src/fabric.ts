@@ -30,6 +30,46 @@ export function ssoConfigured(): boolean {
   return !!config.omosBaseUrl && !!config.omosAppSecret;
 }
 
+export interface NotifyPayload {
+  text: string;
+  title?: string;
+  level?: 'info' | 'success' | 'warning' | 'error';
+}
+
+/**
+ * Relay a message to the masjid's configured webhook via the Fabric (server→server,
+ * authenticated with our per-app secret). The platform owns the destination — we
+ * never see the webhook URL — and it requires the notifications capability
+ * (manifest `notifications: true`). FAILS SOFT: no platform, no secret, the admin
+ * hasn't enabled notifications, or any error → returns delivered:false and the app
+ * carries on. Never throws. See docs/FABRIC.md.
+ */
+export async function notify(payload: NotifyPayload): Promise<{ delivered: boolean; reason?: string }> {
+  if (!config.omosBaseUrl || !config.omosAppSecret) return { delivered: false, reason: 'no-fabric' };
+  if (!payload.text?.trim()) return { delivered: false, reason: 'empty' };
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(`${config.omosBaseUrl}/api/fabric/notify`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openmasjid-app-secret': config.omosAppSecret,
+      },
+      body: JSON.stringify({ text: payload.text, title: payload.title, level: payload.level ?? 'info' }),
+      signal: ctrl.signal,
+      redirect: 'error',
+    });
+    clearTimeout(t);
+    if (!res.ok) return { delivered: false, reason: `http_${res.status}` };
+    const j = (await res.json().catch(() => ({}))) as { delivered?: boolean; reason?: string };
+    return { delivered: j.delivered === true, reason: j.reason };
+  } catch (err) {
+    log.debug(`fabric notify failed: ${err instanceof Error ? err.message : err}`);
+    return { delivered: false, reason: 'unreachable' };
+  }
+}
+
 /** Pull the platform's session token out of the request's Cookie header. */
 function omosCookie(req: IncomingMessage): string | null {
   const raw = req.headers.cookie;

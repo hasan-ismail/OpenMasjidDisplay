@@ -44,6 +44,8 @@ export class Orchestrator {
     private readonly store: Store,
     private readonly render: RenderManager,
     private readonly onStatus: (s: TvStatus[]) => void,
+    /** optional decoder-reachability source for the live status (the ping monitor) */
+    private readonly reachable?: (tvId: string) => boolean | undefined,
   ) {}
 
   getStatuses(): TvStatus[] {
@@ -175,6 +177,7 @@ export class Orchestrator {
         source: res.source,
         ruleId: res.ruleId,
         streamReady: ready,
+        decoderReachable: this.reachable?.(tv.id),
       });
     }
     this.statuses = statuses;

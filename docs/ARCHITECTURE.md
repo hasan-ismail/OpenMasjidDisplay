@@ -126,11 +126,25 @@ behaves exactly as a standalone install. Full contract in `docs/FABRIC.md`.
   other endpoint and the WebSocket stay a simple synchronous cookie check. It never trusts a
   browser-supplied identity, and falls back to the app's own password whenever the base URL/secret is
   unset, the cookie is absent, or the platform is unreachable.
+- **Notifications** (`notifications: true`) — the app relays alerts to the masjid's configured webhook via
+  `POST <base>/api/fabric/notify` (`fabric.ts` `notify()`), authenticated with the per-app secret. The app
+  never sees the webhook URL (the platform owns the destination — no SSRF from the app). It **fails soft**:
+  no platform / not enabled → `delivered:false` and the app carries on. Used by the screen monitor below.
+
+## Screen (decoder) reachability monitor
+
+Each screen can store its decoder box's IP. `tvMonitor.ts` probes every screen with an IP every 30s (a
+plain TCP connect — no ICMP/raw socket, so it runs least-privilege; "connected or refused = online,
+timeout = offline"). After 3 consecutive failures (~90s) it relays an **offline** alert through the Fabric,
+and a **back-online** alert on recovery. The confirmed state also rides on `TvStatus.decoderReachable` so the
+panel shows an "Offline" badge. Reachability never affects streaming; it's purely an alert.
 
 ## Security & least privilege
 
-- No `privileged`, host networking/pid/ipc, `cap_add`, devices, or Docker socket (passes the OpenMasjidOS
-  compose checks).
+- No `privileged`, host namespaces (`network/pid/ipc/userns/cgroup/uts: host`), `cap_add`, `devices`,
+  `device_cgroup_rules`, `security_opt: unconfined`, `group_add`, Docker socket, sensitive mounts, or
+  `extends:`/`include:` — passes the OpenMasjidOS compose risk-check at both catalog build and install
+  (tightened in platform v0.19.2).
 - Single-admin auth via a signed, HTTP-only session cookie; constant-time password comparison.
 - OpenMasjidOS SSO (when present) is verified server-to-server and only ever trusts the cookie actually on
   the request; it augments, never replaces, the local password fallback.

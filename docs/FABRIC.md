@@ -15,11 +15,17 @@
 >   (so the platform issues `OPENMASJID_APP_SECRET` at install), and the introspection call sends that
 >   secret in `X-OpenMasjid-App-Secret`. `ssoConfigured()` now requires the secret, so on an older
 >   platform that doesn't issue one, SSO simply stays off and the app uses its own login.
+> - **Notifications (since v0.20.0):** `manifest.yaml` sets `notifications: true`; `fabric.ts` `notify()`
+>   relays alerts via `POST /api/fabric/notify` (per-app secret, `{text,title?,level?}`). The app never
+>   sees the webhook URL and the call fails soft. Used by the screen-offline monitor (`tvMonitor.ts`).
+> - **Compose security:** the app passes the platform's tightened compose risk-check (v0.19.2) — no
+>   privileged / host-namespace / `cap_add` / `devices` / `device_cgroup_rules` / `security_opt:unconfined`
+>   / `group_add` / Docker-socket / sensitive-mount / `extends:`/`include:`; pins the image, named volume.
 >
 > The wire identifiers are the shared Fabric contract and must stay byte-for-byte: env vars
 > `OPENMASJID_BASE_URL`, `OPENMASJID_APP_ID`, `OPENMASJID_APP_SECRET`; header `X-OpenMasjid-App-Secret`;
-> cookie `omos_session`; endpoints `/api/auth/session` + `/api/public/appearance`. "Fabric" names the
-> layer, not a prefix on those identifiers.
+> cookie `omos_session`; endpoints `/api/auth/session`, `/api/public/appearance`, `/api/fabric/notify`.
+> "Fabric" names the layer, not a prefix on those identifiers.
 >
 > The sections below are the original contract, kept as the spec of record; the authoritative normative
 > contract now lives in the platform repo's `docs/APP_MANIFEST_SPEC.md` ("OpenMasjidOS Fabric" section)

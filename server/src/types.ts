@@ -158,6 +158,9 @@ export interface Tv {
   id: string;
   name: string;
   room?: string;
+  /** IP/hostname of this screen's RTSP decoder box, used to ping it and alert the
+   *  masjid (via the Fabric) if it drops offline. '' = not monitored. */
+  decoderIp?: string;
   defaultContent: ContentRef;
   /** Manual override set by a volunteer; until = epoch ms (null = until changed). */
   override?: { content: ContentRef; until: number | null } | null;
@@ -225,4 +228,7 @@ export interface TvStatus {
   ruleId?: string;
   /** is the underlying content pipeline currently healthy */
   streamReady: boolean;
+  /** decoder reachability from the ping monitor: true=online, false=offline,
+   *  undefined=not monitored (no decoder IP set). */
+  decoderReachable?: boolean;
 }

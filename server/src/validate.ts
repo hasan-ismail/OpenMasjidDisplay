@@ -233,10 +233,15 @@ export function normSource(input: unknown, base?: Source): Source {
 
 export function normTv(input: unknown, base?: Tv): Tv {
   const o = asObj(input);
+  // Decoder IP/hostname for the offline ping monitor. Charset-limited (IPv4/IPv6/host)
+  // so nothing odd flows into a socket connect; '' = not monitored.
+  const dRaw = (o.decoderIp === undefined ? base?.decoderIp ?? '' : str(o.decoderIp, '', 255)).trim();
+  const decoderIp = /^[A-Za-z0-9._:-]{1,255}$/.test(dRaw) ? dRaw : '';
   return {
     id: base?.id ?? rid('tv'),
     name: str(o.name, base?.name ?? 'Screen', 80) || 'Screen',
     room: str(o.room, base?.room ?? '', 80),
+    decoderIp,
     defaultContent: o.defaultContent ? normContent(o.defaultContent) : base?.defaultContent ?? { kind: 'off' },
     override: base?.override ?? null,
     createdAt: base?.createdAt ?? new Date().toISOString(),

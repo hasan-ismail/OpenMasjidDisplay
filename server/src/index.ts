@@ -12,6 +12,8 @@ import { WsHub } from './ws';
 import { hasValidSession } from './auth';
 import { ping } from './mediamtx';
 import { MediaMtxServer } from './mediamtxServer';
+import { TvMonitor } from './tvMonitor';
+import { notify } from './fabric';
 
 const log = makeLog('main');
 
@@ -26,9 +28,19 @@ async function main(): Promise<void> {
   const mediamtx = new MediaMtxServer();
   mediamtx.start();
 
-  const orchestrator = new Orchestrator(store, render, (statuses) => {
-    hub?.broadcast('status', statuses);
-  });
+  // Pings each screen's decoder; alerts the masjid via the Fabric on offline/online.
+  const monitor = new TvMonitor(() => store.db.tvs, (p) => notify(p));
+  const orchestrator = new Orchestrator(
+    store,
+    render,
+    (statuses) => {
+      hub?.broadcast('status', statuses);
+    },
+    (tvId) => monitor.reachable(tvId),
+  );
+  // A reachability change → rebuild + rebroadcast status so the panel shows it live.
+  monitor.onChange = () => void orchestrator.reconcile();
+  monitor.start();
 
   // Any data change → tell panels to refetch state and re-reconcile (debounced).
   let pending: NodeJS.Timeout | null = null;
@@ -91,6 +103,7 @@ async function main(): Promise<void> {
 
   const shutdown = () => {
     log.info('shutting down');
+    monitor.stop();
     render.stopAll();
     mediamtx.stop();
     server.close();
