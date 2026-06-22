@@ -46,18 +46,17 @@ export interface TickerSpec {
 /** Build the video filter. The scrolling ticker is drawn by ffmpeg with drawtext
  *  AFTER fps=15, so it animates at the output frame rate (smooth) even though the
  *  SVG frames only update once per second. The SVG paints just the strip. */
-// 20 fps for the ticker: smoother than 15 but still light on a 2-core box (the
-// heavy SVG render stays at 1 fps on the worker; ffmpeg just duplicates frames and
-// animates the text). Quantising the scroll to a whole number of pixels PER FRAME is
-// what removes the judder — ffmpeg snaps drawtext x to integer pixels each frame, so
-// a non-integer px/frame produced an uneven 1px,2px,1px,2px… stutter before.
-const TICKER_FPS = 20;
-function timetableVf(d: Dims, ticker: TickerSpec | null): string {
-  if (!ticker) return 'format=yuv420p,fps=15';
+// Ticker cadence: 20 fps normally (smooth, still light on a 2-core box — the heavy
+// SVG render stays at 1 fps on the worker; ffmpeg just duplicates frames and animates
+// the text), 12 fps in low-bandwidth mode (less motion = fewer bits on a slow link).
+// Quantising the scroll to a whole number of pixels PER FRAME is what removes judder.
+function timetableVf(d: Dims, ticker: TickerSpec | null, low: boolean): string {
+  const fps = low ? 12 : 20;
+  if (!ticker) return `format=yuv420p,fps=${low ? 10 : 15}`;
   const { y, bandH, fs } = tickerLayout(d.width, d.height);
   const size = Math.round(fs);
   const wanted = clamp(Math.min(d.width, d.height) * 0.045, 36, 110); // px/sec target
-  const pxPerFrame = Math.max(1, Math.round(wanted / TICKER_FPS)); // exact integer px/frame → no jitter
+  const pxPerFrame = Math.max(1, Math.round(wanted / fps)); // exact integer px/frame → no jitter
   const gap = Math.round(size * 4);
   const period = `tw+${gap}`; // tw = real text width at render time → seamless tiling
   const yExpr = `${Math.round(y + bandH / 2)}-th/2`;
@@ -69,24 +68,31 @@ function timetableVf(d: Dims, ticker: TickerSpec | null): string {
   for (let k = 0; k < copies; k++) {
     // floor(t*fps) gives an integer frame index, so x steps by exactly pxPerFrame each
     // frame (no sub-pixel rounding wobble); the tiling copies hide the wrap.
-    const x = `w-mod(floor(t*${TICKER_FPS})*${pxPerFrame}\\,${period})${k > 0 ? `-${k}*(${period})` : ''}`;
+    const x = `w-mod(floor(t*${fps})*${pxPerFrame}\\,${period})${k > 0 ? `-${k}*(${period})` : ''}`;
     // expansion=none: treat the message file as literal text (no %{...} / escape interpretation).
     dt.push(`drawtext=fontfile='${ticker.fontfile}':textfile='${ticker.textfile}':expansion=none:fontsize=${size}:fontcolor=white:x=${x}:y=${yExpr}`);
   }
-  return `fps=${TICKER_FPS},${dt.join(',')},format=yuv420p`;
+  return `fps=${fps},${dt.join(',')},format=yuv420p`;
 }
 
-function timetableArgs(d: Dims, target: string, ticker: TickerSpec | null): string[] {
-  const br = d.height >= 1080 ? 3500 : 1800;
+function timetableArgs(d: Dims, target: string, ticker: TickerSpec | null, low: boolean): string[] {
+  // Low-bandwidth: a near-static timetable compresses tiny, so we drop the cap to fit
+  // an off-site link over SD-WAN (the screenshot showed ~1.6 Mbps). We also switch from
+  // CBR (which pads static frames with filler to hit the rate) to capped VBR, so the
+  // stream only uses what the picture needs — peaking at `br`, averaging far less.
+  const br = low ? (d.height >= 1080 ? 900 : 450) : (d.height >= 1080 ? 3500 : 1800);
+  const rate = low
+    ? ['-b:v', `${Math.round(br * 0.55)}k`, '-maxrate', `${br}k`, '-bufsize', `${br * 2}k`]
+    : ['-b:v', `${br}k`, '-maxrate', `${br}k`, '-bufsize', `${br}k`];
   return [
     '-hide_banner', '-loglevel', 'warning',
     '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${d.width}x${d.height}`, '-framerate', '1', '-i', 'pipe:0',
-    '-vf', timetableVf(d, ticker), '-fps_mode', 'cfr',
+    '-vf', timetableVf(d, ticker, low), '-fps_mode', 'cfr',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
     '-profile:v', 'baseline', '-level', levelFor(d.height),
     '-g', '30', '-keyint_min', '30', '-sc_threshold', '0', '-bf', '0',
-    '-x264-params', 'repeat-headers=1:nal-hrd=cbr',
-    '-b:v', `${br}k`, '-maxrate', `${br}k`, '-bufsize', `${br}k`,
+    '-x264-params', low ? 'repeat-headers=1' : 'repeat-headers=1:nal-hrd=cbr',
+    ...rate,
     '-an', '-f', 'rtsp', '-rtsp_transport', 'tcp', target,
   ];
 }
@@ -208,6 +214,8 @@ class TimetablePipeline extends FfmpegPipeline {
   // and respawn ffmpeg so its drawtext filters rebuild.
   private tickerText = '';
   private readonly tickerFile: string;
+  // Low-bandwidth (off-site) mode changes the encoder args, so a toggle must respawn.
+  private lowBw = false;
 
   constructor(id: string, private readonly getTt: () => Timetable | undefined) {
     super(id);
@@ -215,6 +223,7 @@ class TimetablePipeline extends FfmpegPipeline {
     const tt = getTt();
     this.dims = tt ? dimsFor(tt.orientation, tt.quality) : { width: 1280, height: 720 };
     this.tickerText = tt ? safeTicker(tt) : '';
+    this.lowBw = !!tt?.lowBandwidth;
     this.writeTickerFile();
   }
 
@@ -234,7 +243,7 @@ class TimetablePipeline extends FfmpegPipeline {
   }
 
   protected args(): string[] {
-    return timetableArgs(this.dims, this.target(), this.tickerSpec());
+    return timetableArgs(this.dims, this.target(), this.tickerSpec(), this.lowBw);
   }
 
   private restartProc(): void {
@@ -285,6 +294,12 @@ class TimetablePipeline extends FfmpegPipeline {
     const want = dimsFor(tt.orientation, tt.quality);
     if (want.width !== this.dims.width || want.height !== this.dims.height) {
       this.dims = want;
+      this.restartProc();
+      return;
+    }
+    // Low-bandwidth toggled → respawn ffmpeg so the new bitrate/cadence take effect.
+    if (!!tt.lowBandwidth !== this.lowBw) {
+      this.lowBw = !!tt.lowBandwidth;
       this.restartProc();
       return;
     }

@@ -80,6 +80,8 @@ export interface Timetable {
   textColor?: string;
   orientation: Orientation;
   quality: Quality;
+  /** lower the stream bitrate to fit an off-site screen on a slow/SD-WAN link */
+  lowBandwidth: boolean;
   /** on-screen arrangement preset */
   layout: TimetableLayout;
   /** rotate through the layouts over the day to avoid screen burn-in */

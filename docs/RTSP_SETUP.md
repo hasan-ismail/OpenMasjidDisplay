@@ -53,6 +53,34 @@ Credentials in the URL are stored but never displayed in the panel.
 - **Most compatible (re-encode)** — we transcode the source to a fixed-size H.264 stream so it plays on more
   decoders, and so switching to/from a timetable doesn't change resolution. Uses more CPU — best on a mini-PC.
 
+## Off-site screens (over SD-WAN / VPN / the internet)
+
+A screen at another building reaches this server over your SD-WAN or VPN, so the
+**RTSP link stays the same** — `rtsp://<server>:8554/tv_xxxx` — as long as that
+address is routable from the remote site (point the decoder at the server's SD-WAN
+address, or the LAN IP if the tunnel bridges subnets). RTSP is forced to **TCP**,
+which is what you want across a WAN (firewall/NAT-friendly and reliable); latency of
+~100 ms only adds a small start-up delay, and a little jitter is fine.
+
+The thing that matters on a slow remote link is **bitrate**. A normal timetable
+stream is ~1.8 Mbps (720p) / 3.5 Mbps (1080p) — too much for, say, a 1.5 Mbps
+remote line. So for any timetable shown on an off-site screen, turn on
+**Low bandwidth (off-site screen)** in the timetable editor. Because a timetable is
+nearly a still image, the saver stream peaks around **0.45 Mbps at 720p**
+(≈0.9 Mbps at 1080p) and in practice averages far less — it fits comfortably on a
+slow link with no visible quality loss. (If a timetable is shown both on-site and
+off-site, the on-site copies use the same lighter stream; on a LAN that's invisible.)
+
+Notes:
+- Give the remote decoder a small **network/jitter buffer** (most have a "buffer" or
+  "latency" setting — 500–1000 ms) so brief WAN hiccups don't stutter.
+- **Cameras** are full-motion video and stay bandwidth-heavy — sending a camera to a
+  far site over ~1–2 Mbps usually isn't practical. Off-site screens are best used for
+  **timetables** (and announcements/ticker), which are light. If you must, use
+  **Most compatible (re-encode)** at **720p** and expect it to use most of the link.
+- If the remote link is very slow, prefer **720p** over 1080p for the off-site
+  timetable — half the pixels, roughly half the bits.
+
 ## Troubleshooting
 
 | Symptom | Try |

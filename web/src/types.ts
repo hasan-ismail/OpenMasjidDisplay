@@ -39,6 +39,8 @@ export interface Timetable {
   accent?: string;
   /** on-screen text colour: '' = auto contrast; or a hex */
   textColor?: string;
+  /** lower the stream bitrate to fit an off-site screen on a slow link */
+  lowBandwidth?: boolean;
   orientation: Orientation;
   quality: Quality;
   layout: TimetableLayout;
