@@ -163,7 +163,7 @@ type NotifyTest = { baseUrlSet: boolean; hasSecret: boolean; baseUrlLoopback: bo
 function notifyAdvice(r: NotifyTest): { ok: boolean; msg: string } {
   if (r.delivered) return { ok: true, msg: 'Sent! Check your Slack / Discord / webhook for the test message.' };
   if (!r.baseUrlSet || !r.hasSecret)
-    return { ok: false, msg: 'This app hasn’t received its OpenMasjidOS credentials yet. In OpenMasjidOS, update (or remove and reinstall) OpenMasjid Display so the platform grants it permission to send alerts.' };
+    return { ok: false, msg: 'This app hasn’t received its OpenMasjidOS credentials yet. First update OpenMasjidOS itself to the latest version, then update OpenMasjid Display from the dashboard (or remove and reinstall it) — that’s what grants it permission to send alerts.' };
   if (r.baseUrlLoopback)
     return { ok: false, msg: 'The platform address is set to “localhost”, which this app can’t reach from its own container. On the OpenMasjidOS side, set OPENMASJID_BASE_URL to the server’s network address.' };
   if (r.reason === 'disabled')
