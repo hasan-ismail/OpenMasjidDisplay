@@ -39,7 +39,21 @@
 
 ---
 
-## ⚠️ Open item for the OpenMasjidOS agent — Fabric notify isn't delivering
+## ✅ Resolved — the Fabric env wasn't reaching this container (app-side compose fix)
+
+**Root cause (v0.20.5):** the platform injects `OPENMASJID_BASE_URL` / `OPENMASJID_APP_ID` /
+`OPENMASJID_APP_SECRET` by writing them to the app's `.env` and running `docker compose --env-file`. That
+only feeds **`${VAR}` substitution** — it does **not** push vars into the container. This app's
+`docker-compose.yml` never *referenced* `${OPENMASJID_*}` in its `environment:`, so the container saw none of
+them (`/api/notify-test` reported Platform URL / App ID / secret all "(not set)"). That silently disabled
+**both** SSO and notifications. Fixed by referencing them in compose:
+`OPENMASJID_BASE_URL: ${OPENMASJID_BASE_URL:-}` (+ APP_ID, APP_SECRET). This is exactly what the contract's
+"reference settings as `${KEY}` and pass them via `environment:`" rule requires — it also applies to the
+Fabric vars. Platform side (catalog capability + env injection) was correct; the gap was the app's compose.
+
+---
+
+## (Historical) Open item for the OpenMasjidOS agent — Fabric notify isn't delivering
 
 **Symptom (reported by a masjid running this app):** a screen-offline alert never reached the webhook.
 The platform's own **Settings → Notifications → "test webhook"** *does* post successfully, so the webhook

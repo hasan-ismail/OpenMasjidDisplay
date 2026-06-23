@@ -10,13 +10,20 @@
 # Screens find this server automatically from the address you open the panel with.
 services:
   app:
-    image: ghcr.io/hasan-ismail/openmasjiddisplay:0.20.4
+    image: ghcr.io/hasan-ismail/openmasjiddisplay:0.20.5
     restart: unless-stopped
     environment:
       PORT: "8080"
       VOLUNTEER_PORT: "8081"
       VOLUNTEER_PUBLIC_PORT: "7861"
       DATA_DIR: /data
+      # OpenMasjidOS Fabric: the platform writes these into the app's .env and runs
+      # compose with --env-file, which only feeds ${VAR} SUBSTITUTION — so we must
+      # reference them here for them to actually reach the container (appearance/SSO +
+      # notifications). Empty defaults keep a standalone `docker compose up` quiet.
+      OPENMASJID_BASE_URL: ${OPENMASJID_BASE_URL:-}
+      OPENMASJID_APP_ID: ${OPENMASJID_APP_ID:-}
+      OPENMASJID_APP_SECRET: ${OPENMASJID_APP_SECRET:-}
     ports:
       # host:container. OpenMasjidOS offers "Open" on the LOWEST published port,
       # so the control panel (7860) must stay below the RTSP port (8554). The
