@@ -117,7 +117,7 @@ export const api = {
   deleteSchedule: (id: string) => req('DELETE', `/api/schedules/${id}`),
 
   testNotification: () =>
-    req<{ baseUrlSet: boolean; hasSecret: boolean; baseUrlLoopback: boolean; delivered: boolean; reason?: string }>('POST', '/api/notify-test'),
+    req<{ baseUrlSet: boolean; hasSecret: boolean; baseUrlLoopback: boolean; baseUrl: string; appId: string; delivered: boolean; reason?: string }>('POST', '/api/notify-test'),
 };
 
 /** The simple mobile volunteer page (served on its own port; PIN-gated). */

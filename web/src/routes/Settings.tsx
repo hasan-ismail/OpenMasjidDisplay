@@ -157,7 +157,7 @@ export function SettingsPage({ state, refetch }: Props) {
   );
 }
 
-type NotifyTest = { baseUrlSet: boolean; hasSecret: boolean; baseUrlLoopback: boolean; delivered: boolean; reason?: string };
+type NotifyTest = { baseUrlSet: boolean; hasSecret: boolean; baseUrlLoopback: boolean; baseUrl: string; appId: string; delivered: boolean; reason?: string };
 
 /** Map a notify-test result to one clear, friendly sentence + ok/err. */
 function notifyAdvice(r: NotifyTest): { ok: boolean; msg: string } {
@@ -182,12 +182,16 @@ function NotificationsPanel() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [advice, setAdvice] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [detail, setDetail] = useState<NotifyTest | null>(null);
 
   const test = async () => {
     setBusy(true);
     setAdvice(null);
+    setDetail(null);
     try {
-      setAdvice(notifyAdvice(await api.testNotification()));
+      const r = await api.testNotification();
+      setDetail(r);
+      setAdvice(notifyAdvice(r));
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not run the test.', 'error');
     } finally {
@@ -211,6 +215,15 @@ function NotificationsPanel() {
           </span>
         )}
       </div>
+      {detail && (
+        <div className="hint" style={{ marginBlockStart: '0.6rem', fontFamily: 'monospace', fontSize: '0.82rem', opacity: 0.85, lineHeight: 1.6 }}>
+          What OpenMasjidOS gave this app:<br />
+          • Platform URL: {detail.baseUrl || '(not set)'}<br />
+          • App ID: {detail.appId || '(not set)'}<br />
+          • App secret: {detail.hasSecret ? 'present' : 'missing'}
+          {detail.reason ? <> · relay reason: {detail.reason}</> : null}
+        </div>
+      )}
     </div>
   );
 }

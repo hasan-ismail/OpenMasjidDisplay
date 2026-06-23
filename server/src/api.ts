@@ -267,7 +267,9 @@ export function createApi(deps: Deps) {
             level: 'info',
           });
         }
-        return sendJson(res, 200, { baseUrlSet: !!base, hasSecret, baseUrlLoopback, ...result });
+        // baseUrl + appId are the platform's own (non-secret) injected env — surfaced so
+        // the admin can see EXACTLY which of the three the platform did/didn't inject.
+        return sendJson(res, 200, { baseUrlSet: !!base, hasSecret, baseUrlLoopback, baseUrl: base, appId: config.omosAppId, ...result });
       }
 
       if (pathname === '/api/settings' && method === 'PUT') {
