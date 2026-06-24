@@ -36,6 +36,15 @@
 > tokens, login rate-limiting, short (~1 h) SSO session, ~45 s positive cache, cookie read only from the
 > request + charset-sanitized before forwarding, `redirect:'error'` + timeout, and now the per-app
 > secret so SSO is identity-bound end to end.
+>
+> **Transport note — set an https `OPENMASJID_BASE_URL` for cross-host deployments.** By default the app
+> talks to the platform over the trusted LAN in plain http (e.g. `http://openmasjidos.local`), which is fine
+> — same host/LAN, nothing leaves the network. But the per-app Fabric secret is sent in the
+> `X-OpenMasjid-App-Secret` header on every `/api/auth/session` and `/api/fabric/notify` call, so if the
+> platform lives on a **different, public host** reached over plain http, that secret crosses the network in
+> cleartext. For any cross-host setup, point `OPENMASJID_BASE_URL` at an **https** address so the secret is
+> encrypted in transit. The app logs a one-time warning (in `server/src/fabric.ts`) if it detects the secret
+> going to a public host over plain http; it never refuses to send, so the LAN default keeps working untouched.
 
 ---
 

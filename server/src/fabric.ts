@@ -30,6 +30,60 @@ export function ssoConfigured(): boolean {
   return !!config.omosBaseUrl && !!config.omosAppSecret;
 }
 
+/**
+ * Is `host` a loopback / private / LAN address where sending our app secret over
+ * plain HTTP is acceptable? Covers loopback (127.0.0.1/::1/localhost), RFC1918
+ * private ranges (10/172.16-31/192.168), link-local (169.254 / fe80), and the
+ * mDNS/intranet hostnames the product uses by default (*.local, *.lan). Anything
+ * else is treated as a PUBLIC host. We err on the side of "safe" only for these
+ * well-known private cases — an unrecognised host is considered public.
+ */
+function isPrivateHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[/, '').replace(/\]$/, ''); // strip IPv6 brackets
+  if (h === 'localhost' || h === '::1' || h === '0.0.0.0') return true;
+  if (h.endsWith('.local') || h.endsWith('.lan')) return true;
+  if (h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')) return true; // IPv6 link-local + unique-local
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 127) return true; // 127.0.0.0/8 loopback
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
+  }
+  return false;
+}
+
+// Warn at most once for the whole process — a cleartext secret on a public host is
+// a config concern, not a per-request event, so we don't want to spam the log.
+let cleartextSecretWarned = false;
+
+/**
+ * One-time warning when our per-app Fabric secret is about to be sent in cleartext
+ * to a PUBLIC host (non-https base URL whose host is not loopback/private/LAN). The
+ * default LAN flow (http://openmasjidos.local, a 192.168.x.x box, …) is fine and
+ * stays silent. We never stop sending — this only nudges cross-host deployments
+ * toward an https OPENMASJID_BASE_URL. See docs/FABRIC.md.
+ */
+function warnIfCleartextSecret(): void {
+  if (cleartextSecretWarned || !config.omosBaseUrl) return;
+  let url: URL;
+  try {
+    url = new URL(config.omosBaseUrl);
+  } catch {
+    return; // malformed base URL — the fetch below will fail and be handled there
+  }
+  if (url.protocol === 'https:') return; // encrypted — nothing to warn about
+  if (isPrivateHost(url.hostname)) return; // trusted LAN — sending over http is fine
+  cleartextSecretWarned = true;
+  log.warn(
+    `OPENMASJID_BASE_URL is a public address over plain http (${url.host}); this app's Fabric secret ` +
+      `is being sent across the network unencrypted. For a cross-host deployment, set an https ` +
+      `OPENMASJID_BASE_URL so the secret isn't exposed. (Over a trusted LAN, plain http is fine.)`,
+  );
+}
+
 export interface NotifyPayload {
   text: string;
   title?: string;
@@ -47,6 +101,7 @@ export interface NotifyPayload {
 export async function notify(payload: NotifyPayload): Promise<{ delivered: boolean; reason?: string }> {
   if (!config.omosBaseUrl || !config.omosAppSecret) return { delivered: false, reason: 'no-fabric' };
   if (!payload.text?.trim()) return { delivered: false, reason: 'empty' };
+  warnIfCleartextSecret(); // about to send the per-app secret — flag it if cleartext to a public host
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 5000);
@@ -112,6 +167,7 @@ export async function platformUser(req: IncomingMessage): Promise<string | null>
   const cached = positiveCache.get(token);
   if (cached && cached.expires > nowMs()) return cached.username;
 
+  warnIfCleartextSecret(); // about to send the per-app secret — flag it if cleartext to a public host
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 4000);

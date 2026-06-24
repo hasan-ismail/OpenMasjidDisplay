@@ -505,7 +505,15 @@ export function createApi(deps: Deps) {
           // Serve the image so the editor can show a thumbnail (must belong to this id).
           const f = file.startsWith(`${id}.ann.`) ? uploadFilePath(file) : null;
           if (!f) return sendJson(res, 404, { error: 'Image not found.' });
-          res.writeHead(200, { 'content-type': f.mime, 'cache-control': 'private, max-age=300' });
+          // Defense-in-depth: this serves user-uploaded files raw with their real type.
+          // An uploaded SVG is active content, so stop the browser sniffing the type and
+          // sandbox it (no scripts, same-origin only) so it can't run JS in our origin.
+          res.writeHead(200, {
+            'content-type': f.mime,
+            'cache-control': 'private, max-age=300',
+            'x-content-type-options': 'nosniff',
+            'content-security-policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+          });
           fs.createReadStream(f.path).pipe(res);
           return;
         }
