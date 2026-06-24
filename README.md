@@ -80,7 +80,8 @@ adding this entry to `registry.yaml`:
 ```yaml
   - id: display
     repo: hasan-ismail/OpenMasjidDisplay
-    ref: v0.20.7
+    # Immutable pin: a tag/branch can be moved to backdoored content, a commit SHA can't.
+    commit: <40-char commit SHA of the release>   # preferred over a movable `ref: v0.20.7`
 ```
 
 ### No install-time settings
