@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
 # OpenMasjid Display — one container that runs everything:
 #   • the control panel (web UI + API),
 #   • the timetable video renderer, and
@@ -13,7 +15,7 @@ services:
     # Tag for humans + digest for integrity (the @sha256 is what actually pins). A
     # moved tag can't repoint this to a different image. Bump both each release.
     # (digest re-pinned in the follow-up commit once the org-namespace image is built)
-    image: ghcr.io/openmasjid-solutions/openmasjiddisplay:0.20.8@sha256:e0a9978b3fb13170befecc75d7a3948667c0e58307e1bc0f483209c7d0dbb825
+    image: ghcr.io/openmasjid-solutions/openmasjiddisplay:0.21.0
     restart: unless-stopped
     environment:
       PORT: "8080"

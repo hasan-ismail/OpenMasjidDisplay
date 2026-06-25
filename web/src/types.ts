@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 // Client-side mirror of the server domain types (see server/src/types.ts).
 
 export type Quality = '720p' | '1080p';

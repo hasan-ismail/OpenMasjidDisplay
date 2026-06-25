@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** HTTP/JSON API + static SPA host. Mutations go through the store, whose change
  *  listener triggers a reconcile and a WebSocket status push. */
 import type { IncomingMessage, ServerResponse } from 'node:http';

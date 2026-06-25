@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** Single-admin auth. The admin account is created in-app on first run (no
  *  install-time password). Password is stored as a scrypt hash in the data
  *  volume; the session is a signed, HTTP-only cookie. */
@@ -8,6 +10,12 @@ const COOKIE = 'omd_session';
 const VOL_COOKIE = 'omd_vol';
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 const VOL_MAX_AGE_MS = 12 * 3600 * 1000; // volunteer sessions are short-lived
+
+// Add `Secure` to session cookies when the panel is served over HTTPS. Default OFF
+// for the trusted-LAN plain-HTTP flow this app ships in (a `Secure` cookie would
+// silently never be sent over http and lock you out). Set COOKIE_SECURE=yes for an
+// HTTPS / cross-host deployment so the session cookie isn't sent in cleartext.
+const SECURE = (process.env.COOKIE_SECURE ?? '').trim().toLowerCase() === 'yes' ? '; Secure' : '';
 
 export function hashPassword(password: string): { hash: string; salt: string } {
   const salt = crypto.randomBytes(16);
@@ -75,11 +83,11 @@ export function hasValidSession(req: IncomingMessage, secret: Buffer): boolean {
 }
 
 export function setCookieHeader(token: string, maxAgeMs = MAX_AGE_MS): string {
-  return `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(maxAgeMs / 1000)}`;
+  return `${COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(maxAgeMs / 1000)}${SECURE}`;
 }
 
 export function clearCookieHeader(): string {
-  return `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  return `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${SECURE}`;
 }
 
 // ── Volunteer session (separate cookie + audience from the admin) ─────────────
@@ -93,9 +101,9 @@ export function hasValidVolunteerSession(req: IncomingMessage, secret: Buffer): 
 }
 
 export function setVolunteerCookieHeader(token: string): string {
-  return `${VOL_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(VOL_MAX_AGE_MS / 1000)}`;
+  return `${VOL_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(VOL_MAX_AGE_MS / 1000)}${SECURE}`;
 }
 
 export function clearVolunteerCookieHeader(): string {
-  return `${VOL_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  return `${VOL_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${SECURE}`;
 }

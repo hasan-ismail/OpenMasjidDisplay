@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * Thin client for the MediaMTX control API (v3). We never rewrite mediamtx.yml
  * (its file watcher is unreliable in Docker); instead we drive paths at runtime:

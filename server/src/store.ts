@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** Durable JSON store for all app state, kept in the data volume. */
 import fs from 'node:fs';
 import path from 'node:path';

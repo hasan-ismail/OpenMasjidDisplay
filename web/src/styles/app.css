@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 OpenMasjid-Solutions */
 /* Base + components. Layout uses logical properties so it works LTR and RTL. */
 
 html, body { height: 100%; }
@@ -80,7 +82,9 @@ h1, h2, h3, p { margin: 0; }
 .menu-item:hover { background: var(--color-surface-hover); }
 .menu-item svg { color: var(--color-ink-muted); flex-shrink: 0; }
 .menu-sep { height: 1px; background: var(--color-border); margin: 0.35rem 0.3rem; }
-.menu-version { padding: 0.3rem 0.7rem 0.4rem; color: var(--color-ink-muted); font-size: 0.78rem; }
+.menu-version { padding: 0.3rem 0.7rem 0.4rem; color: var(--color-ink-muted); font-size: 0.78rem; line-height: 1.5; }
+.menu-source-link { color: var(--color-primary); text-decoration: none; }
+.menu-source-link:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .profile-menu { animation: none; } }
 .spacer { flex: 1; }
 .page-head { margin-block: 0.25rem 1.25rem; }

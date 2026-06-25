@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 // A curated list of common time zones, labelled by their abbreviation (EST, PDT,
 // PKT…) so a volunteer can recognise theirs. The VALUE is the IANA name the
 // prayer engine needs; the label just leads with the abbreviation. '' = server zone.

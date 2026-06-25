@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** Colour palettes for the timetable display. Each is a calm, dignified scheme;
  *  the control panel mirrors these as room themes. Colours are plain hex/rgba so
  *  they drop straight into the rendered SVG. */

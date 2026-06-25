@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** Entry point: wires the store, renderer, orchestrator, HTTP API and WebSocket
  *  hub together, waits for MediaMTX, and keeps schedules ticking. */
 import http from 'node:http';

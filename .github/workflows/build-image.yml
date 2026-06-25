@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
 name: Build image
 
 # Builds this app's Dockerfile multi-arch (amd64 + arm64) and pushes to GHCR as

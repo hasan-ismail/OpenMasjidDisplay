@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** Normalizers that turn untrusted request bodies into safe, fully-formed
  *  domain objects. Every field is clamped/defaulted; ids and createdAt are
  *  preserved on update or generated on create. */

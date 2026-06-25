@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * Apple-style liquid-glass pointer refraction: light catching the glass as the
  * cursor moves over it. Sets --mx/--my (cursor position within the hovered pane)

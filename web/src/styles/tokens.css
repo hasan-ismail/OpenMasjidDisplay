@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 OpenMasjid-Solutions */
 /*
  * Design tokens — mirrors the OpenMasjidOS palette so the control panel feels
  * like part of the platform. Switching theme = data-theme="dark|light" on <html>.

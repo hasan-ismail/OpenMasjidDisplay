@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * VolunteerApp — the bone-simple, PIN-gated mobile page served on the volunteer
  * port. A volunteer unlocks with the PIN, sees every screen, and taps to switch

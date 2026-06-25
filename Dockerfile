@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
 # syntax=docker/dockerfile:1
 #
 # OpenMasjid Display — multi-stage, multi-arch (amd64 + arm64).

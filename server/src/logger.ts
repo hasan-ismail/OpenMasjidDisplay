@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** Minimal leveled logger. Never logs secrets. */
 type Level = 'info' | 'warn' | 'error' | 'debug';
 

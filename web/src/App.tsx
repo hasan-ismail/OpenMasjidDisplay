@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAppState } from './state';
 import { api } from './api';
@@ -199,7 +201,19 @@ function ProfileMenu({
             </button>
           )}
           <div className="menu-sep" aria-hidden="true" />
-          <div className="menu-version">OpenMasjid Display v{__APP_VERSION__}</div>
+          <div className="menu-version">
+            OpenMasjid Display v{__APP_VERSION__}
+            {' · '}
+            {/* AGPL-3.0 §13: offer the running version's source to every operator. */}
+            <a
+              href={`https://github.com/OpenMasjid-Solutions/OpenMasjidDisplay/tree/v${__APP_VERSION__}`}
+              target="_blank"
+              rel="noreferrer"
+              className="menu-source-link"
+            >
+              Source code (AGPL-3.0)
+            </a>
+          </div>
         </div>
       )}
     </div>

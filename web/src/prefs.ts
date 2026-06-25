@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * Per-browser presentation preferences (theme + wallpaper), persisted in
  * localStorage and applied live. This is NOT masjid config — it mirrors how

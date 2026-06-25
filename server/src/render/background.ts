@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * Uploaded timetable images — custom backgrounds and masjid logos — stored under
  * /data/uploads and inlined into the rendered SVG as data: URIs (resvg only embeds

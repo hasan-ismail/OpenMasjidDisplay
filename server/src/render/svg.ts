@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * render/svg.ts — builds the full-screen prayer-times display as an SVG string,
  * which resvg rasterizes into video frames.

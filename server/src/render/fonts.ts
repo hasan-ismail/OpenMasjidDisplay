@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /** Locate a small, curated set of bundled font files for resvg to render with.
  *
  *  We pick only the BASE families we actually draw with (Latin sans/serif +

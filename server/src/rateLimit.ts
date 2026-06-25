@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * A tiny in-memory failed-attempt limiter for the login endpoints. Keyed by client
  * IP, with exponential backoff after a few failures and a temporary lockout. This is

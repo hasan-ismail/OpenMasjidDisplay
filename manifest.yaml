@@ -1,10 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
 id: display
 name: OpenMasjid Display
 tagline: Run prayer timetables, cameras and HDMI on every screen in your masjid — over your network
 category: displays
-version: 0.20.8
+version: 0.21.0
 author: OpenMasjid-Solutions
-license: AGPL-3.0
+license: AGPL-3.0-only
 icon: icon.svg
 screenshots:
   - screenshots/1.svg

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 /**
  * render/renderWorker.ts — runs the (CPU-heavy, synchronous) resvg rasterization
  * on a worker thread so it NEVER blocks the main event loop.

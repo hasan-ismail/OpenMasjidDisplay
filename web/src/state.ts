@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
 import { useCallback, useEffect, useState } from 'react';
 import { api, setUnauthHandler } from './api';
 import type { AppState, TvStatus } from './types';
