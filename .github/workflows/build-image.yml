@@ -20,6 +20,7 @@ on:
       - 'docs/**'
       - 'screenshots/**'
       - 'LICENSE'
+      - 'docker-compose.yml'
   workflow_dispatch:
 
 permissions:
