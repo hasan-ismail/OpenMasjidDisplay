@@ -2,13 +2,29 @@
 
 <img src="icon.svg" width="96" alt="OpenMasjid Display" />
 
-# OpenMasjid Display
+<h1 align="center"><b>OpenMasjid Display</b></h1>
 
-**Run prayer timetables, cameras and HDMI on every screen in your masjid — over your network.**
+<p align="center">
+  <a href="#how-it-works">How it works</a> |
+  <a href="#install-through-openmasjidos">Install Guide</a> |
+  <a href="#license">License</a>
+</p>
 
-An app for [OpenMasjidOS](https://github.com/OpenMasjid-Solutions/OpenMasjidOS). Free and open source (AGPL-3.0).
-
+<div align="center">
+  <a href="https://github.com/OpenMasjid-Solutions/OpenMasjidDisplay/releases">
+    <img src="https://img.shields.io/github/v/release/OpenMasjid-Solutions/OpenMasjidDisplay?style=flat-square&color=blue" alt="Latest Release" />
+  </a>
+  <a href="https://github.com/OpenMasjid-Solutions/OpenMasjidDisplay">
+    <img src="https://img.shields.io/github/stars/OpenMasjid-Solutions/OpenMasjidDisplay?style=flat-square&color=blue" alt="Stars" />
+  </a>
+  <a href="https://discord.gg/MpPDbyQfaF">
+    <img src="https://img.shields.io/badge/Discord-Join-blue?style=flat-square&logo=discord" alt="Discord" />
+  </a>
 </div>
+
+<h5 align="center">
+Leave a star if you like the project! ⭐️
+</h5>
 
 ---
 
