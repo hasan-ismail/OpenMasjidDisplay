@@ -1,6 +1,6 @@
-<div align="center">
-
-<img src="icon.png" width="96" alt="OpenMasjid Display" />
+<p align="center">
+  <img src="assets/Display - rounded corners.png" alt="OpenMasjid Display" width="280"/>
+</p>
 
 <h1 align="center"><b>OpenMasjid Display</b></h1>
 
