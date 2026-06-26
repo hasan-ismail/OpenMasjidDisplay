@@ -43,6 +43,8 @@ export interface TickerSpec {
   text: string;
   textfile: string;
   fontfile: string;
+  /** scroll speed 1 (slow) … 10 (fast) */
+  speed: number;
 }
 
 // Ticker cadence: 20 fps (smooth, still light on a 2-core box — the heavy SVG render
@@ -56,8 +58,8 @@ function timetableVf(d: Dims, ticker: TickerSpec | null): string {
   if (!ticker) return 'format=yuv420p,fps=15';
   const { y, bandH, fs } = tickerLayout(d.width, d.height);
   const size = Math.round(fs);
-  const wanted = clamp(Math.min(d.width, d.height) * 0.045, 36, 110); // px/sec target
-  const pxPerFrame = Math.max(1, Math.round(wanted / TICKER_FPS)); // exact integer px/frame → no jitter
+  const speed = clamp(Math.round(ticker.speed || 5), 1, 10); // 1 (slow) … 10 (fast)
+  const pxPerFrame = Math.max(1, Math.round((speed * 16) / TICKER_FPS)); // exact integer px/frame → no jitter
   const gap = Math.round(size * 4);
   const period = `tw+${gap}`; // tw = real text width at render time → seamless tiling
   const yExpr = `${Math.round(y + bandH / 2)}-th/2`;
@@ -273,6 +275,7 @@ class TimetablePipeline extends FfmpegPipeline {
   // when it changes (schedule windows, edits, enable/disable), rewrite the text file
   // and respawn ffmpeg so its drawtext filters rebuild.
   private tickerText = '';
+  private tickerSpeed = 5; // scroll speed is an ffmpeg arg → respawn when it changes
   private readonly tickerFile: string;
 
   constructor(id: string, private readonly getTt: () => Timetable | undefined) {
@@ -281,13 +284,14 @@ class TimetablePipeline extends FfmpegPipeline {
     const tt = getTt();
     this.dims = tt ? dimsFor(tt.orientation, tt.quality) : { width: 1280, height: 720 };
     this.tickerText = tt ? safeTicker(tt) : '';
+    this.tickerSpeed = tt?.tickerSpeed ?? 5;
     this.writeTickerFile();
   }
 
   private tickerSpec(): TickerSpec | null {
     const font = primaryFontFile();
     if (!this.tickerText || !font) return null;
-    return { text: this.tickerText, textfile: this.tickerFile, fontfile: font };
+    return { text: this.tickerText, textfile: this.tickerFile, fontfile: font, speed: this.tickerSpeed };
   }
 
   private writeTickerFile(): void {
@@ -351,6 +355,13 @@ class TimetablePipeline extends FfmpegPipeline {
     const want = dimsFor(tt.orientation, tt.quality);
     if (want.width !== this.dims.width || want.height !== this.dims.height) {
       this.dims = want;
+      this.restartProc();
+      return;
+    }
+    // Ticker scroll speed changed → respawn so the drawtext step rate updates.
+    const spd = tt.tickerSpeed ?? 5;
+    if (spd !== this.tickerSpeed && this.tickerText) {
+      this.tickerSpeed = spd;
       this.restartProc();
       return;
     }

@@ -200,6 +200,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     labels: normLabels(o.labels, base?.labels),
     announcements: normAnnouncements(o.announcements, base?.announcements),
     ticker: normTicker(o.ticker, base?.ticker),
+    tickerSpeed: o.tickerSpeed === undefined ? base?.tickerSpeed ?? 5 : intIn(o.tickerSpeed, 5, 1, 10),
     footerNote: str(o.footerNote, base?.footerNote ?? '', 160),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };

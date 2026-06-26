@@ -127,6 +127,8 @@ export interface Timetable {
   announcements?: Announcements;
   /** bottom scrolling text ticker */
   ticker?: Ticker;
+  /** ticker scroll speed, 1 (slow) … 10 (fast); default 5 */
+  tickerSpeed?: number;
   footerNote: string;
   createdAt: string;
 }

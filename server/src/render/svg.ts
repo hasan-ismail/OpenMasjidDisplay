@@ -185,7 +185,7 @@ function fmtClock(hours: number, timeFormat: string, withSeconds = false): Clock
 function fmtShort(hours: number | null, timeFormat: string): string {
   if (hours == null || !Number.isFinite(hours)) return '—';
   const c = fmtClock(hours, timeFormat);
-  return c.period ? `${c.time} ${c.period.toLowerCase()}` : c.time;
+  return c.period ? `${c.time} ${c.period}` : c.time; // AM/PM stays uppercase
 }
 
 function gregorian(parts: { year: number; month: number; day: number }, lang: string, offsetDays = 0): string {
@@ -398,6 +398,10 @@ interface Model {
   activeKey: string;
   nextKey: string;
   nextHours: number;
+  /** true when nextHours/nextKey point at the CURRENT prayer's Iqāmah (its adhan has
+   *  passed, iqamah hasn't) — so the countdown reads "Iqāmah in" and the next prayer
+   *  isn't highlighted until this one is over. */
+  countdownToIqamah: boolean;
   isFriday: boolean;
 }
 
@@ -463,11 +467,24 @@ function buildModel(tt: Timetable, now: Date): Model {
   rows.push({ key: 'maghrib', label: 'maghrib', adhan: times.maghrib, iqamah: iq('maghrib', times.maghrib) });
   rows.push({ key: 'isha', label: 'isha', adhan: times.isha, iqamah: iq('isha', times.isha) });
 
+  // Highlight/countdown fix: while a prayer's Adhan has passed but its Iqāmah hasn't,
+  // THAT prayer stays the focus — count down to its Iqāmah, and don't promote the next
+  // prayer yet. Only once the Iqāmah passes does the upcoming prayer become "next".
+  let countdownToIqamah = false;
+  const inWindow = rows.find(
+    (r) => r.adhan != null && r.iqamah != null && r.adhan <= nowHours && nowHours < r.iqamah,
+  );
+  if (inWindow) {
+    nextKey = inWindow.key;
+    nextHours = inWindow.iqamah!;
+    countdownToIqamah = true;
+  }
+
   for (const r of rows) {
     if (r.key === activeKey) r.active = true;
     if (r.key === nextKey) r.next = true;
   }
-  return { parts, times, rows, activeKey, nextKey, nextHours, isFriday };
+  return { parts, times, rows, activeKey, nextKey, nextHours, countdownToIqamah, isFriday };
 }
 
 /** Where the sun/moon sits right now (an arc across the sky) + day/night. */
@@ -757,7 +774,7 @@ function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, ba
 /** Big H : M : S countdown hero (used by the split / MasjidBox-style layout). The
  *  whole time is one string (so the colons can never overlap the digits), and the
  *  the colons can never overlap the digits. */
-function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms: [number, number, number], p: Palette, L: Record<string, string>): string {
+function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms: [number, number, number], p: Palette, L: Record<string, string>, toIqamah = false): string {
   const out: string[] = [];
   let numSize = clamp(w * 0.2, 36, 160);
   const timeStr = `${pad2(hms[0])}:${pad2(hms[1])}:${pad2(hms[2])}`;
@@ -765,7 +782,8 @@ function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms
   const strW = approxWidth(timeStr, numSize);
   if (strW > w * 0.94) numSize *= (w * 0.94) / strW;
   const baseline = cy + numSize * 0.34;
-  out.push(text(cx, cy - numSize * 0.5, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${L.athan?.toUpperCase() ?? 'ADHAN'} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
+  const eventWord = (toIqamah ? (L.iqamah ?? 'Iqamah') : (L.athan ?? 'Adhan')).toUpperCase();
+  out.push(text(cx, cy - numSize * 0.5, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${eventWord} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
   out.push(text(cx, baseline, timeStr, { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
   return out.join('');
 }
@@ -854,7 +872,7 @@ function splitView(
   const heroW = W - P - heroX;
   return (
     splitLeftPanel(tt, m, clock, greg, hij, p, L, P, top, leftW, leftH, logo) +
-    countdownHero(heroX + heroW / 2, (top + bottom) / 2, heroW, m.rows.find((r) => r.next)?.label ?? 'fajr', hms, p, L)
+    countdownHero(heroX + heroW / 2, (top + bottom) / 2, heroW, m.rows.find((r) => r.next)?.label ?? 'fajr', hms, p, L, m.countdownToIqamah)
   );
 }
 
@@ -952,7 +970,7 @@ function spotlightView(
   let bigSize = clamp(heroH * 0.22, 28, 124);
   const bigStr = tt.showCountdown ? `${pad2(hms[0])}:${pad2(hms[1])}:${pad2(hms[2])}` : fmtShort(next.iqamah ?? next.adhan, tt.timeFormat);
   const bigLabel = tt.showCountdown
-    ? `${L.athan?.toUpperCase() ?? 'ADHAN'} IN`
+    ? `${(m.countdownToIqamah ? (L.iqamah ?? 'Iqamah') : (L.athan ?? 'Adhan')).toUpperCase()} IN`
     : ((next.iqamah != null ? L.iqamah : L.athan) ?? '').toUpperCase();
   const bw = approxWidth(bigStr, bigSize);
   if (bw > heroW * 0.72) bigSize *= (heroW * 0.72) / bw;
@@ -1068,7 +1086,9 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   // A live ticking "time until next prayer" counter (H:MM:SS), like the split hero.
   const counter = hms[0] > 0 ? `${hms[0]}:${pad2(hms[1])}:${pad2(hms[2])}` : `${hms[1]}:${pad2(hms[2])}`;
   const nextLabel = L[m.rows.find((r) => r.next)?.label ?? 'fajr'] ?? '';
-  const pillText = `${nextLabel.toUpperCase()} ${(L.athan ?? 'Adhan').toUpperCase()} IN   ${counter}`;
+  // "Iqāmah in" while inside the current prayer's Adhan→Iqāmah window, else "Adhan in".
+  const eventWord = (m.countdownToIqamah ? (L.iqamah ?? 'Iqamah') : (L.athan ?? 'Adhan')).toUpperCase();
+  const pillText = `${nextLabel.toUpperCase()} ${eventWord} IN   ${counter}`;
 
   const greg = gregorian(m.parts, tt.language, tt.gregorianOffset ?? 0);
   const hij = hijri(m.parts, tt.language, tt.hijriOffset ?? 0);

@@ -137,7 +137,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     timeFormat: '12h', language: 'en', hijriOffset: 0, gregorianOffset: 0,
     iqamah: { fajr: { mode: 'offset', offset: 20 }, dhuhr: { mode: 'offset', offset: 10 }, asr: { mode: 'offset', offset: 10 }, maghrib: { mode: 'offset', offset: 5 }, isha: { mode: 'offset', offset: 10 } },
     jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true,
-    backgroundImage: '', logoImage: '', footerNote: '', createdAt: '',
+    backgroundImage: '', logoImage: '', footerNote: '', tickerSpeed: 5, createdAt: '',
   };
 }
 
@@ -628,6 +628,20 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
             <span className="label" style={{ margin: 0 }}>Scroll short messages along the bottom</span>
             <Toggle checked={tk.enabled} onChange={(v) => setTk({ enabled: v })} label="Scroll messages along the bottom" />
           </div>
+          {tk.enabled && (
+            <Field label={`Scroll speed — ${f.tickerSpeed ?? 5} / 10`} hint="How fast the messages move across the bottom.">
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={f.tickerSpeed ?? 5}
+                onChange={(e) => set('tickerSpeed', Number(e.target.value))}
+                style={{ width: '100%' }}
+                aria-label="Ticker scroll speed"
+              />
+            </Field>
+          )}
           <div className="list">
             {tk.messages.map((mm, i) => (
               <div key={mm.id} className="msg-row">

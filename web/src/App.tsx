@@ -140,6 +140,24 @@ function Dock({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   );
 }
 
+/** Live wall clock for the top-left of the dashboard (time + date), like the
+ *  OpenMasjidOS / OpenMasjidDonations header clock. */
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const iv = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(iv);
+  }, []);
+  const time = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const date = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return (
+    <div className="topclock" aria-label={`${time}, ${date}`}>
+      <span className="topclock-time">{time}</span>
+      <span className="topclock-date">{date}</span>
+    </div>
+  );
+}
+
 /** Top-right account menu — theme, settings, version and sign-out (like the
  *  OpenMasjidOS dashboard's profile button). */
 function ProfileMenu({
@@ -252,6 +270,7 @@ function Shell({
           <MasjidMark size={24} />
           <b>OpenMasjid Display</b>
         </div>
+        <Clock />
         <span className="spacer" />
         <ProfileMenu
           dark={dark}

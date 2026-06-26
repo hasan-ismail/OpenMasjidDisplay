@@ -71,6 +71,8 @@ export interface Timetable {
   labels?: Record<string, string>;
   announcements?: Announcements;
   ticker?: Ticker;
+  /** ticker scroll speed 1 (slow) … 10 (fast) */
+  tickerSpeed?: number;
   footerNote: string;
   createdAt: string;
 }
