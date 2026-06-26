@@ -7,7 +7,7 @@ category: displays
 version: 0.26.0
 author: OpenMasjid-Solutions
 license: AGPL-3.0-only
-icon: icon.svg
+icon: icon.png
 screenshots:
   - screenshots/1.svg
   - screenshots/2.svg

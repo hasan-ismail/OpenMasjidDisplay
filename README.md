@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="icon.svg" width="96" alt="OpenMasjid Display" />
+<img src="icon.png" width="96" alt="OpenMasjid Display" />
 
 <h1 align="center"><b>OpenMasjid Display</b></h1>
 
