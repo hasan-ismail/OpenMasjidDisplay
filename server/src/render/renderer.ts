@@ -350,13 +350,19 @@ class TimetablePipeline extends FfmpegPipeline {
     }
   }
 
+  // Poll several times a second but render at most once per wall-clock second.
+  // A fixed 1 s loop that skipped a tick whenever a render was still in flight made
+  // the cadence jump to 2 s as soon as one render took >1 s — so the on-screen
+  // countdown ticked down by 2. Polling at 250 ms and gating on the second means we
+  // render again as soon as the previous frame lands, locking the countdown to ~1 s.
+  private lastSec = -1;
   private loop(): void {
     if (this.stopped) {
       this.looping = false;
       return;
     }
     this.frame();
-    this.timer = setTimeout(() => this.loop(), 1000);
+    this.timer = setTimeout(() => this.loop(), 250);
   }
 
   private frame(): void {
@@ -388,13 +394,18 @@ class TimetablePipeline extends FfmpegPipeline {
       this.restartProc();
       return;
     }
-    if (this.rendering) return; // don't render faster than we can deliver
+    if (this.rendering) return; // a render is still in flight — let it finish
     const stdin = this.proc?.stdin;
     if (!stdin || !stdin.writable) return;
+    // At most one render per wall-clock second (the poll runs ~4×/s).
+    const sec = Math.floor(Date.now() / 1000);
+    if (sec === this.lastSec) return;
+    this.lastSec = sec;
 
     this.rendering = true;
     this.worker
-      .raw(tt, Date.now(), this.renderDims.width)
+      // Stamp the frame at the whole second so the clock/countdown land exactly on it.
+      .raw(tt, sec * 1000, this.renderDims.width)
       .then((img) => {
         this.rendering = false;
         if (this.stopped) return;
