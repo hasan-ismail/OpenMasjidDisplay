@@ -33,8 +33,6 @@ interface Req {
   tt: Timetable;
   nowMs: number;
   width?: number;
-  /** rasterise the (raw) frame at this width instead of the SVG's native size */
-  renderWidth?: number;
   bgFile?: string;
   logoFile?: string;
 }
@@ -178,12 +176,7 @@ port.on('message', (msg: Req) => {
     const announcement = annFile ? announcementDataUri(annFile) : null;
     // tickerBandOnly: paint just the strip — ffmpeg overlays the moving text smoothly.
     const svg = renderDisplaySvg(tt, now, { bg, logo, announcement, tickerBandOnly: true, bgLight: bgIsLight(tt, bg), autoAccent: bgAccent(tt, bg) });
-    // renderWidth caps the raster (e.g. 4K → 1920) so the piped frame stays light;
-    // ffmpeg upscales it to the true output size.
-    const r = new Resvg(svg, {
-      font: fontOptions(),
-      ...(msg.renderWidth ? { fitTo: { mode: 'width' as const, value: msg.renderWidth } } : {}),
-    }).render();
+    const r = new Resvg(svg, { font: fontOptions() }).render();
     const px = r.pixels;
     const ab = new ArrayBuffer(px.byteLength);
     new Uint8Array(ab).set(px);
