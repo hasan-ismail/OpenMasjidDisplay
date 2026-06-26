@@ -12,7 +12,7 @@
  * per-element toggles are honoured; a carousel option rotates the layout over the
  * day to avoid screen burn-in. No sacred/Arabic text appears in decorative chrome.
  */
-import type { Timetable, TimetableLayout } from '../types';
+import type { Timetable, TimetableLayout, HadithItem } from '../types';
 import { getPalette, type Palette } from './theme';
 import {
   prayerTimes,
@@ -261,6 +261,9 @@ function activeTickerText(tt: Timetable, parts: ReturnType<typeof localParts>): 
 /** The active ticker string for the given instant (used by the renderer to drive the
  *  smooth ffmpeg-side scroll). */
 export function activeTickerString(tt: Timetable, now: Date): string {
+  // A full-screen overlay (zawāl notice, pre-Iqāmah countdown, during-salah hadith)
+  // takes over the whole screen — hide the scrolling ticker while it shows.
+  if (overlayActiveNow(tt, now)) return '';
   return activeTickerText(tt, localParts(now, tt.timezone || undefined));
 }
 
@@ -1024,33 +1027,60 @@ function wrapLines(s: string, size: number, maxW: number, maxLines = 6): string[
   return lines;
 }
 
-/** If we're within the configured minutes after an Iqāmah, the hadith to show now
- *  (rotating through the list every ~15s), else null. */
-function activeSalahHadith(tt: Timetable, m: Model, nowHours: number, now: Date): string | null {
-  const sh = tt.salahHadith;
-  if (!sh?.enabled || !sh.items.length) return null;
-  const win = Math.max(1, sh.minutes) / 60;
-  const inSalah = m.rows.some(
-    (r) => r.iqamah != null && r.iqamah <= nowHours && nowHours < r.iqamah + win,
-  );
-  if (!inSalah) return null;
-  const idx = Math.floor(now.getTime() / 15000) % sh.items.length;
-  return sh.items[idx];
-}
+/** A full-screen takeover that suppresses the normal layout (and the ffmpeg ticker). */
+type Overlay =
+  | { kind: 'prohibited'; secs: number }
+  | { kind: 'iqamah'; secs: number; key: string }
+  | { kind: 'hadith'; item: HadithItem };
 
-/** Seconds remaining until the Dhuhr Adhan if we're inside the "prohibited" (zawāl)
- *  window before it, else null. */
-function prohibitedRemaining(tt: Timetable, m: Model, nowHours: number): number | null {
+/** Which full-screen overlay (if any) is active right now. Precedence: the zawāl
+ *  notice, then the pre-Iqāmah countdown, then the during-salah hadith. */
+function activeOverlay(tt: Timetable, m: Model, nowHours: number, now: Date): Overlay | null {
+  // 1) Prohibited (zawāl) window before the Dhuhr Adhan.
   const pn = tt.prohibitedNotice;
-  if (!pn?.enabled) return null;
-  const dhuhr = m.times.dhuhr; // astronomical zenith / Dhuhr Adhan
-  const win = Math.max(1, pn.minutes) / 60;
-  if (nowHours >= dhuhr - win && nowHours < dhuhr) return Math.max(0, (dhuhr - nowHours) * 3600);
+  if (pn?.enabled) {
+    const dhuhr = m.times.dhuhr; // astronomical zenith / Dhuhr Adhan
+    const win = Math.max(1, pn.minutes) / 60;
+    if (nowHours >= dhuhr - win && nowHours < dhuhr) {
+      return { kind: 'prohibited', secs: Math.max(0, (dhuhr - nowHours) * 3600) };
+    }
+  }
+  // 2) Full-screen countdown for the last minutes before any Iqāmah.
+  const ic = tt.iqamahCountdown;
+  if (ic?.enabled) {
+    const win = Math.max(1, ic.minutes) / 60;
+    const row = m.rows.find(
+      (r) =>
+        r.adhan != null && r.iqamah != null &&
+        r.adhan <= nowHours && nowHours >= r.iqamah - win && nowHours < r.iqamah,
+    );
+    if (row) return { kind: 'iqamah', secs: Math.max(0, (row.iqamah! - nowHours) * 3600), key: row.key };
+  }
+  // 3) Hadith during salah (the minutes after each Iqāmah), rotating every ~15s.
+  const sh = tt.salahHadith;
+  if (sh?.enabled && sh.items.length) {
+    const win = Math.max(1, sh.minutes) / 60;
+    const inSalah = m.rows.some(
+      (r) => r.iqamah != null && r.iqamah <= nowHours && nowHours < r.iqamah + win,
+    );
+    if (inSalah) {
+      const idx = Math.floor(now.getTime() / 15000) % sh.items.length;
+      return { kind: 'hadith', item: sh.items[idx] };
+    }
+  }
   return null;
 }
 
-/** Calm hadith card over a dimmed scene, shown during salah. */
-function salahHadithView(hadith: string, p: Palette, W: number, H: number): string {
+/** True if any full-screen overlay is showing now — used to hide the ffmpeg ticker. */
+function overlayActiveNow(tt: Timetable, now: Date): boolean {
+  if (tt.latitude == null || tt.longitude == null) return false;
+  const m = buildModel(tt, now);
+  const nowHours = m.parts.hour + m.parts.minute / 60 + m.parts.second / 3600;
+  return activeOverlay(tt, m, nowHours, now) != null;
+}
+
+/** Calm hadith card over a dimmed scene, shown during salah (Arabic above English). */
+function salahHadithView(item: HadithItem, p: Palette, W: number, H: number): string {
   const out: string[] = [];
   out.push(rect(0, 0, W, H, 0, 'rgba(0,0,0,0.62)'));
   const cardW = Math.min(W * 0.82, 1400);
@@ -1058,17 +1088,41 @@ function salahHadithView(hadith: string, p: Palette, W: number, H: number): stri
   const cx = W / 2;
   const cy = H / 2;
   out.push(glass(cx - cardW / 2, cy - cardH / 2, cardW, cardH, Math.min(cardW, cardH) * 0.05, { glow: p.primary }));
-  const eyebrowY = cy - cardH / 2 + cardH * 0.18;
-  out.push(text(cx, eyebrowY, 'DURING PRAYER', { size: clamp(W * 0.014, 13, 26), fill: p.goldSoft, weight: 700, anchor: 'middle', letter: 4 }));
-  const fs = clamp(W * 0.028, 22, 56);
-  const lines = wrapLines(hadith, fs, cardW * 0.84, 6);
-  const lh = fs * 1.42;
-  const blockH = lines.length * lh;
-  let ly = cy - blockH / 2 + fs * 0.7;
-  for (const ln of lines) {
-    out.push(text(cx, ly, ln, { size: fs, fill: p.text, family: FONT_DISPLAY, weight: 500, anchor: 'middle' }));
-    ly += lh;
+  const ar = item.ar.trim();
+  const en = item.en.trim();
+  const arFs = clamp(W * 0.034, 26, 66);
+  const enFs = clamp(W * 0.024, 18, 46);
+  const arLines = ar ? wrapLines(ar, arFs, cardW * 0.84, 4) : [];
+  const enLines = en ? wrapLines(en, enFs, cardW * 0.84, 5) : [];
+  const arLh = arFs * 1.5;
+  const enLh = enFs * 1.42;
+  const gap = ar && en ? arFs * 0.7 : 0;
+  const blockH = arLines.length * arLh + enLines.length * enLh + gap;
+  let ly = cy - blockH / 2 + (arLines.length ? arFs * 0.8 : enFs * 0.7);
+  for (const ln of arLines) {
+    out.push(text(cx, ly, ln, { size: arFs, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+    ly += arLh;
   }
+  if (ar && en) ly += gap;
+  for (const ln of enLines) {
+    out.push(text(cx, ly, ln, { size: enFs, fill: p.textDim, family: FONT_DISPLAY, weight: 500, anchor: 'middle' }));
+    ly += enLh;
+  }
+  return out.join('');
+}
+
+/** Full-screen countdown to a prayer's Iqāmah ("line up for prayer"). */
+function iqamahCountdownView(secsLeft: number, prayerKey: string, p: Palette, L: Record<string, string>, W: number, H: number): string {
+  const out: string[] = [];
+  out.push(rect(0, 0, W, H, 0, 'rgba(0,0,0,0.72)'));
+  const cx = W / 2;
+  const mm = Math.floor(secsLeft / 60);
+  const ss = Math.floor(secsLeft % 60);
+  const counter = `${pad2(mm)}:${pad2(ss)}`;
+  const pname = (L[prayerKey] ?? prayerKey).toUpperCase();
+  out.push(text(cx, H * 0.34, `${pname} ${(L.iqamah ?? 'Iqamah').toUpperCase()} IN`, { size: clamp(W * 0.02, 18, 44), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 4 }));
+  out.push(text(cx, H * 0.6, counter, { size: clamp(W * 0.16, 90, 360), fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
+  out.push(text(cx, H * 0.74, 'Please line up for prayer', { size: clamp(W * 0.016, 14, 30), fill: p.textDim, anchor: 'middle' }));
   return out.join('');
 }
 
@@ -1213,16 +1267,13 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   out.push(lightBeams(cel, W, H)); // soft shafts falling over the scene
   out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
 
-  // ── Full-takeover overlays (drawn over the scene, suppress the normal layout) ──
-  // Prohibited-time (zawāl) notice wins; then the during-salah hadith.
-  const prohibitedSecs = prohibitedRemaining(tt, m, nowHours);
-  const hadith = prohibitedSecs == null ? activeSalahHadith(tt, m, nowHours, now) : null;
-  if (prohibitedSecs != null) {
-    out.push(prohibitedView(prohibitedSecs, p, L, W, H));
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
-  }
-  if (hadith) {
-    out.push(salahHadithView(hadith, p, W, H));
+  // ── Full-takeover overlays (drawn over the scene, suppress the normal layout
+  //    AND the scrolling ticker — see activeTickerString) ──────────────────────
+  const overlay = activeOverlay(tt, m, nowHours, now);
+  if (overlay) {
+    if (overlay.kind === 'prohibited') out.push(prohibitedView(overlay.secs, p, L, W, H));
+    else if (overlay.kind === 'iqamah') out.push(iqamahCountdownView(overlay.secs, overlay.key, p, L, W, H));
+    else out.push(salahHadithView(overlay.item, p, W, H));
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
   }
 

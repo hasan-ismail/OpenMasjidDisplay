@@ -70,14 +70,20 @@ export interface Ticker {
   messages: TickerMessage[];
 }
 
+/** One hadith, optionally in both Arabic and English (either may be empty). */
+export interface HadithItem {
+  ar: string;
+  en: string;
+}
+
 /** During salah (the minutes after Iqāmah), show a hadith over a dimmed background.
  *  Admins add several; the display rotates through them. */
 export interface SalahHadith {
   enabled: boolean;
   /** how many minutes after each Iqāmah to show the hadith overlay */
   minutes: number;
-  /** the hadith texts to rotate through */
-  items: string[];
+  /** the hadith to rotate through (each with Arabic and/or English) */
+  items: HadithItem[];
 }
 
 /** A full-screen notice during the makrūh "prohibited" window before Dhuhr (zawāl),
@@ -85,6 +91,13 @@ export interface SalahHadith {
 export interface ProhibitedNotice {
   enabled: boolean;
   /** how many minutes before the Dhuhr Adhan to show it */
+  minutes: number;
+}
+
+/** A full-screen countdown shown for the last minutes before each Iqāmah. */
+export interface IqamahCountdown {
+  enabled: boolean;
+  /** how many minutes before the Iqāmah the full-screen countdown takes over */
   minutes: number;
 }
 
@@ -151,6 +164,8 @@ export interface Timetable {
   salahHadith?: SalahHadith;
   /** "prohibited time" notice before the Dhuhr Adhan (zawāl) */
   prohibitedNotice?: ProhibitedNotice;
+  /** full-screen countdown for the last minutes before each Iqāmah */
+  iqamahCountdown?: IqamahCountdown;
   footerNote: string;
   createdAt: string;
 }

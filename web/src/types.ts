@@ -34,8 +34,10 @@ export interface Announcements {
 }
 export interface TickerMessage { id: string; text: string; start: string; end: string }
 export interface Ticker { enabled: boolean; messages: TickerMessage[] }
-export interface SalahHadith { enabled: boolean; minutes: number; items: string[] }
+export interface HadithItem { ar: string; en: string }
+export interface SalahHadith { enabled: boolean; minutes: number; items: HadithItem[] }
 export interface ProhibitedNotice { enabled: boolean; minutes: number }
+export interface IqamahCountdown { enabled: boolean; minutes: number }
 export interface Timetable {
   id: string;
   name: string;
@@ -77,6 +79,7 @@ export interface Timetable {
   tickerSpeed?: number;
   salahHadith?: SalahHadith;
   prohibitedNotice?: ProhibitedNotice;
+  iqamahCountdown?: IqamahCountdown;
   footerNote: string;
   createdAt: string;
 }

@@ -24,7 +24,9 @@ import type {
   Announcements,
   Ticker,
   SalahHadith,
+  HadithItem,
   ProhibitedNotice,
+  IqamahCountdown,
 } from './types';
 
 type Obj = Record<string, unknown>;
@@ -138,8 +140,13 @@ function normSalahHadith(v: unknown, base?: SalahHadith): SalahHadith | undefine
   const arr = Array.isArray(o.items) ? o.items : [];
   const items = arr
     .slice(0, 50)
-    .map((x) => str(x, '', 600))
-    .filter((x) => x.trim() !== '');
+    .map((x): HadithItem => {
+      // Legacy items were plain strings (English only) — keep them working.
+      if (typeof x === 'string') return { ar: '', en: str(x, '', 800) };
+      const io = asObj(x);
+      return { ar: str(io.ar, '', 800), en: str(io.en, '', 800) };
+    })
+    .filter((h) => h.ar.trim() !== '' || h.en.trim() !== '');
   return {
     enabled: bool(o.enabled, base?.enabled ?? false),
     minutes: intIn(o.minutes, base?.minutes ?? 10, 1, 60),
@@ -152,6 +159,14 @@ function normProhibited(v: unknown, base?: ProhibitedNotice): ProhibitedNotice |
   return {
     enabled: bool(o.enabled, base?.enabled ?? false),
     minutes: intIn(o.minutes, base?.minutes ?? 10, 1, 45),
+  };
+}
+function normIqamahCountdown(v: unknown, base?: IqamahCountdown): IqamahCountdown | undefined {
+  if (v === undefined) return base;
+  const o = asObj(v);
+  return {
+    enabled: bool(o.enabled, base?.enabled ?? false),
+    minutes: intIn(o.minutes, base?.minutes ?? 5, 1, 30),
   };
 }
 function normTicker(v: unknown, base?: Ticker): Ticker | undefined {
@@ -227,6 +242,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     tickerSpeed: o.tickerSpeed === undefined ? base?.tickerSpeed ?? 5 : intIn(o.tickerSpeed, 5, 1, 10),
     salahHadith: normSalahHadith(o.salahHadith, base?.salahHadith),
     prohibitedNotice: normProhibited(o.prohibitedNotice, base?.prohibitedNotice),
+    iqamahCountdown: normIqamahCountdown(o.iqamahCountdown, base?.iqamahCountdown),
     footerNote: str(o.footerNote, base?.footerNote ?? '', 160),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };

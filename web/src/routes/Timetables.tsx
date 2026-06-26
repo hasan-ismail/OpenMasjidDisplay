@@ -2,7 +2,7 @@
 // Copyright (C) 2026 OpenMasjid-Solutions
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage, SalahHadith, ProhibitedNotice } from '../types';
+import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage, SalahHadith, HadithItem, ProhibitedNotice, IqamahCountdown } from '../types';
 import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCopy, IconClock, IconExpand, IconCalendar, useToast } from '../ui';
 import { timezoneOptions } from '../timezones';
 
@@ -322,14 +322,16 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   const setMsg = (i: number, patch: Partial<TickerMessage>) => setTk({ messages: tk.messages.map((mm, j) => (j === i ? { ...mm, ...patch } : mm)) });
   const delMsg = (i: number) => setTk({ messages: tk.messages.filter((_, j) => j !== i) });
 
-  // ── During-salah hadith + prohibited-time notice ──
+  // ── During-salah hadith + prohibited-time notice + pre-Iqamah countdown ──
   const sh: SalahHadith = f.salahHadith ?? { enabled: false, minutes: 10, items: [] };
   const setSh = (patch: Partial<SalahHadith>) => set('salahHadith', { ...sh, ...patch });
-  const addHadith = () => setSh({ items: [...sh.items, ''] });
-  const setHadith = (i: number, v: string) => setSh({ items: sh.items.map((x, j) => (j === i ? v : x)) });
+  const addHadith = () => setSh({ items: [...sh.items, { ar: '', en: '' }] });
+  const setHadith = (i: number, patch: Partial<HadithItem>) => setSh({ items: sh.items.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const delHadith = (i: number) => setSh({ items: sh.items.filter((_, j) => j !== i) });
   const pn: ProhibitedNotice = f.prohibitedNotice ?? { enabled: false, minutes: 10 };
   const setPn = (patch: Partial<ProhibitedNotice>) => set('prohibitedNotice', { ...pn, ...patch });
+  const ic: IqamahCountdown = f.iqamahCountdown ?? { enabled: false, minutes: 5 };
+  const setIc = (patch: Partial<IqamahCountdown>) => set('iqamahCountdown', { ...ic, ...patch });
 
   const content = (
       <div className="studio">
@@ -675,17 +677,33 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
               <Field label="Show for (minutes after each Iqamah)" hint="How long the hadith stays on screen once a prayer's Iqamah time arrives.">
                 <input className="input" type="number" min={1} max={60} value={sh.minutes} onChange={(e) => setSh({ minutes: Number(e.target.value) })} />
               </Field>
-              <p className="hint" style={{ marginBlockEnd: '0.4rem' }}>Add a few — the screen rotates through them.</p>
+              <p className="hint" style={{ marginBlockEnd: '0.4rem' }}>Add a few — the screen rotates through them. Fill in Arabic, English, or both.</p>
               <div className="list">
                 {sh.items.map((it, i) => (
-                  <div key={i} className="msg-row">
-                    <textarea className="input" rows={2} value={it} onChange={(e) => setHadith(i, e.target.value)} placeholder="e.g. The Prophet ﷺ said: “The best of you are those who learn the Qur’an and teach it.”" style={{ resize: 'vertical' }} />
+                  <div key={i} className="hadith-row">
+                    <div className="hadith-fields">
+                      <textarea className="input" dir="rtl" lang="ar" rows={2} value={it.ar} onChange={(e) => setHadith(i, { ar: e.target.value })} placeholder="النص بالعربية (اختياري)" style={{ resize: 'vertical', fontSize: '1.1rem' }} />
+                      <textarea className="input" rows={2} value={it.en} onChange={(e) => setHadith(i, { en: e.target.value })} placeholder="English translation (optional)" style={{ resize: 'vertical' }} />
+                    </div>
                     <button type="button" className="icon-btn" onClick={() => delHadith(i)} aria-label="Remove hadith"><IconTrash size={15} /></button>
                   </div>
                 ))}
               </div>
               <button type="button" className="btn btn--ghost btn--sm" style={{ marginBlockStart: '0.5rem' }} onClick={addHadith}><IconPlus size={14} /> Add hadith</button>
             </>
+          )}
+        </div>
+
+        <div className="card section">
+          <h3 className="section-title">Countdown to Iqamah</h3>
+          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.7rem' }}>
+            <span className="label" style={{ margin: 0 }}>Show a full-screen countdown in the last minutes before each Iqamah</span>
+            <Toggle checked={ic.enabled} onChange={(v) => setIc({ enabled: v })} label="Show a countdown to Iqamah" />
+          </div>
+          {ic.enabled && (
+            <Field label="Start (minutes before the Iqamah)" hint="The full-screen countdown takes over this many minutes before each prayer's Iqamah time.">
+              <input className="input" type="number" min={1} max={30} value={ic.minutes} onChange={(e) => setIc({ minutes: Number(e.target.value) })} />
+            </Field>
           )}
         </div>
 
