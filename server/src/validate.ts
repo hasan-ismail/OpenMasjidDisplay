@@ -23,6 +23,8 @@ import type {
   Orientation,
   Announcements,
   Ticker,
+  SalahHadith,
+  ProhibitedNotice,
 } from './types';
 
 type Obj = Record<string, unknown>;
@@ -130,6 +132,28 @@ function normAnnouncements(v: unknown, base?: Announcements): Announcements | un
   };
 }
 
+function normSalahHadith(v: unknown, base?: SalahHadith): SalahHadith | undefined {
+  if (v === undefined) return base;
+  const o = asObj(v);
+  const arr = Array.isArray(o.items) ? o.items : [];
+  const items = arr
+    .slice(0, 50)
+    .map((x) => str(x, '', 600))
+    .filter((x) => x.trim() !== '');
+  return {
+    enabled: bool(o.enabled, base?.enabled ?? false),
+    minutes: intIn(o.minutes, base?.minutes ?? 10, 1, 60),
+    items,
+  };
+}
+function normProhibited(v: unknown, base?: ProhibitedNotice): ProhibitedNotice | undefined {
+  if (v === undefined) return base;
+  const o = asObj(v);
+  return {
+    enabled: bool(o.enabled, base?.enabled ?? false),
+    minutes: intIn(o.minutes, base?.minutes ?? 10, 1, 45),
+  };
+}
 function normTicker(v: unknown, base?: Ticker): Ticker | undefined {
   if (v === undefined) return base;
   const o = asObj(v);
@@ -201,6 +225,8 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     announcements: normAnnouncements(o.announcements, base?.announcements),
     ticker: normTicker(o.ticker, base?.ticker),
     tickerSpeed: o.tickerSpeed === undefined ? base?.tickerSpeed ?? 5 : intIn(o.tickerSpeed, 5, 1, 10),
+    salahHadith: normSalahHadith(o.salahHadith, base?.salahHadith),
+    prohibitedNotice: normProhibited(o.prohibitedNotice, base?.prohibitedNotice),
     footerNote: str(o.footerNote, base?.footerNote ?? '', 160),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };

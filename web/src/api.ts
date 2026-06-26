@@ -102,6 +102,9 @@ export const api = {
   /** Click-to-edit text regions for the live editor. */
   previewMeta: (body: Partial<Timetable>) => req<{ hotspots: Hotspot[] }>('POST', '/api/preview-meta', body),
 
+  /** Printable month of computed prayer times (browser "Save as PDF"). */
+  timetablePrintUrl: (id: string) => `/api/timetables/${id}/print`,
+
   createSource: (b: Partial<Source>) => req<Source>('POST', '/api/sources', b),
   updateSource: (id: string, b: Partial<Source>) => req<Source>('PUT', `/api/sources/${id}`, b),
   deleteSource: (id: string) => req('DELETE', `/api/sources/${id}`),

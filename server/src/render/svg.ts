@@ -1001,6 +1001,104 @@ function spotlightView(
 }
 
 /** "Setup needed" frame when no location is configured. */
+/** Greedy word-wrap: break `s` into lines that each fit within `maxW` at `size`. */
+function wrapLines(s: string, size: number, maxW: number, maxLines = 6): string[] {
+  const words = s.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    const trial = cur ? `${cur} ${w}` : w;
+    if (approxWidth(trial, size) > maxW && cur) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = trial;
+    }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = `${kept[maxLines - 1]}…`;
+    return kept;
+  }
+  return lines;
+}
+
+/** If we're within the configured minutes after an Iqāmah, the hadith to show now
+ *  (rotating through the list every ~15s), else null. */
+function activeSalahHadith(tt: Timetable, m: Model, nowHours: number, now: Date): string | null {
+  const sh = tt.salahHadith;
+  if (!sh?.enabled || !sh.items.length) return null;
+  const win = Math.max(1, sh.minutes) / 60;
+  const inSalah = m.rows.some(
+    (r) => r.iqamah != null && r.iqamah <= nowHours && nowHours < r.iqamah + win,
+  );
+  if (!inSalah) return null;
+  const idx = Math.floor(now.getTime() / 15000) % sh.items.length;
+  return sh.items[idx];
+}
+
+/** Seconds remaining until the Dhuhr Adhan if we're inside the "prohibited" (zawāl)
+ *  window before it, else null. */
+function prohibitedRemaining(tt: Timetable, m: Model, nowHours: number): number | null {
+  const pn = tt.prohibitedNotice;
+  if (!pn?.enabled) return null;
+  const dhuhr = m.times.dhuhr; // astronomical zenith / Dhuhr Adhan
+  const win = Math.max(1, pn.minutes) / 60;
+  if (nowHours >= dhuhr - win && nowHours < dhuhr) return Math.max(0, (dhuhr - nowHours) * 3600);
+  return null;
+}
+
+/** Calm hadith card over a dimmed scene, shown during salah. */
+function salahHadithView(hadith: string, p: Palette, W: number, H: number): string {
+  const out: string[] = [];
+  out.push(rect(0, 0, W, H, 0, 'rgba(0,0,0,0.62)'));
+  const cardW = Math.min(W * 0.82, 1400);
+  const cardH = Math.min(H * 0.7, cardW * 0.62);
+  const cx = W / 2;
+  const cy = H / 2;
+  out.push(glass(cx - cardW / 2, cy - cardH / 2, cardW, cardH, Math.min(cardW, cardH) * 0.05, { glow: p.primary }));
+  const eyebrowY = cy - cardH / 2 + cardH * 0.18;
+  out.push(text(cx, eyebrowY, 'DURING PRAYER', { size: clamp(W * 0.014, 13, 26), fill: p.goldSoft, weight: 700, anchor: 'middle', letter: 4 }));
+  const fs = clamp(W * 0.028, 22, 56);
+  const lines = wrapLines(hadith, fs, cardW * 0.84, 6);
+  const lh = fs * 1.42;
+  const blockH = lines.length * lh;
+  let ly = cy - blockH / 2 + fs * 0.7;
+  for (const ln of lines) {
+    out.push(text(cx, ly, ln, { size: fs, fill: p.text, family: FONT_DISPLAY, weight: 500, anchor: 'middle' }));
+    ly += lh;
+  }
+  return out.join('');
+}
+
+/** Full-screen "prohibited time" (zawāl) notice counting down to the Dhuhr Adhan. */
+function prohibitedView(secsLeft: number, p: Palette, L: Record<string, string>, W: number, H: number): string {
+  const out: string[] = [];
+  out.push(rect(0, 0, W, H, 0, 'rgba(0,0,0,0.66)'));
+  const cx = W / 2;
+  const mm = Math.floor(secsLeft / 60);
+  const ss = Math.floor(secsLeft % 60);
+  const counter = `${pad2(mm)}:${pad2(ss)}`;
+  out.push(text(cx, H * 0.3, 'PROHIBITED TIME', { size: clamp(W * 0.022, 20, 48), fill: p.gold, weight: 800, anchor: 'middle', letter: 5 }));
+  const lines = wrapLines(
+    'This is the time of zawāl, when the sun is at its zenith. Voluntary prayer is discouraged until the sun has passed.',
+    clamp(W * 0.018, 16, 32),
+    W * 0.72,
+    4,
+  );
+  let ly = H * 0.42;
+  const fs = clamp(W * 0.018, 16, 32);
+  for (const ln of lines) {
+    out.push(text(cx, ly, ln, { size: fs, fill: p.text, anchor: 'middle' }));
+    ly += fs * 1.45;
+  }
+  const dhuhr = (L.dhuhr ?? 'Dhuhr').toUpperCase();
+  out.push(text(cx, H * 0.66, `${dhuhr} ${(L.athan ?? 'Adhan').toUpperCase()} IN`, { size: clamp(W * 0.014, 13, 28), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 3 }));
+  out.push(text(cx, H * 0.78, counter, { size: clamp(W * 0.09, 60, 200), fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
+  return out.join('');
+}
+
 function setupNeeded(p: Palette, W: number, H: number, masjidName: string): string {
   const cel: Celestial = { isDay: true, x: W * 0.5, y: H * 0.18 };
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
@@ -1035,7 +1133,7 @@ export interface RenderOpts {
   sink?: { hotspots: Hotspot[] };
 }
 
-// Burn-in rotation order: Centered → Spotlight (id 'clockTop') → Split.
+// Burn-in rotation: Centered → Spotlight (id clockTop) → Split, every 5 min.
 const CAROUSEL: TimetableLayout[] = ['centered', 'clockTop', 'split'];
 
 export function renderDisplaySvg(tt: Timetable, now: Date, opts: RenderOpts = {}): string {
@@ -1095,7 +1193,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const tickerText = activeTickerText(tt, m.parts);
 
   const portrait = tt.orientation === 'portrait';
-  const base = tt.layoutCarousel ? CAROUSEL[Math.floor((m.parts.hour * 60 + m.parts.minute) / 15) % 3] : tt.layout;
+  const base = tt.layoutCarousel ? CAROUSEL[Math.floor((m.parts.hour * 60 + m.parts.minute) / 5) % 3] : tt.layout;
   const layout = portrait && base === 'split' ? 'centered' : base;
   const P = Math.round(Math.min(W, H) * 0.05);
   const cel = celestialPos(m.times, nowHours, W, H, P);
@@ -1114,6 +1212,19 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   out.push(celestialBody(cel, W, H)); // the sun or moon itself
   out.push(lightBeams(cel, W, H)); // soft shafts falling over the scene
   out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
+
+  // ── Full-takeover overlays (drawn over the scene, suppress the normal layout) ──
+  // Prohibited-time (zawāl) notice wins; then the during-salah hadith.
+  const prohibitedSecs = prohibitedRemaining(tt, m, nowHours);
+  const hadith = prohibitedSecs == null ? activeSalahHadith(tt, m, nowHours, now) : null;
+  if (prohibitedSecs != null) {
+    out.push(prohibitedView(prohibitedSecs, p, L, W, H));
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
+  }
+  if (hadith) {
+    out.push(salahHadithView(hadith, p, W, H));
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
+  }
 
   if (opts.announcement) {
     // Slideshow: timetable becomes a left sidebar, the image fills the right.

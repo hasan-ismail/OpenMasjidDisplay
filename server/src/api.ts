@@ -35,6 +35,8 @@ import {
 import { renderPreviewPng, renderPreviewMeta } from './render/renderPool';
 import { probeSource } from './render/renderer';
 import { parseIqamahCsv, toCsv, templateCsv, normalizeIqamahYear } from './iqamahCsv';
+import { renderMonthPrintHtml } from './print';
+import { localParts } from './prayer/engine';
 import {
   normTimetable,
   normSource,
@@ -656,6 +658,24 @@ export function createApi(deps: Deps) {
         const tt = normTimetable(body);
         const hotspots = await renderPreviewMeta(tt, Date.now());
         return sendJson(res, 200, { hotspots });
+      }
+      // Printable month of prayer times (browser "Save as PDF").
+      const printMatch = /^\/api\/timetables\/([\w-]+)\/print$/.exec(pathname);
+      if (printMatch && method === 'GET') {
+        const tt = store.db.timetables.find((t) => t.id === printMatch[1]);
+        if (!tt) return sendJson(res, 404, { error: 'Timetable not found.' });
+        if (tt.latitude == null || tt.longitude == null) {
+          return sendJson(res, 400, { error: 'Add the masjid location before printing.' });
+        }
+        const now = localParts(new Date(), tt.timezone || undefined);
+        const monthParam = url.searchParams.get('month');
+        const ym = monthParam ? /^(\d{4})-(\d{2})$/.exec(monthParam) : null;
+        const year = ym ? Number(ym[1]) : now.year;
+        const mon = ym ? Number(ym[2]) : now.month;
+        const html = renderMonthPrintHtml(tt, year, mon);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(html);
+        return;
       }
       const prevMatch = /^\/api\/preview\/([\w-]+)$/.exec(pathname);
       if (prevMatch && method === 'GET') {

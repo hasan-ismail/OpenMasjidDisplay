@@ -70,6 +70,24 @@ export interface Ticker {
   messages: TickerMessage[];
 }
 
+/** During salah (the minutes after Iqāmah), show a hadith over a dimmed background.
+ *  Admins add several; the display rotates through them. */
+export interface SalahHadith {
+  enabled: boolean;
+  /** how many minutes after each Iqāmah to show the hadith overlay */
+  minutes: number;
+  /** the hadith texts to rotate through */
+  items: string[];
+}
+
+/** A full-screen notice during the makrūh "prohibited" window before Dhuhr (zawāl),
+ *  counting down to the Dhuhr Adhan. */
+export interface ProhibitedNotice {
+  enabled: boolean;
+  /** how many minutes before the Dhuhr Adhan to show it */
+  minutes: number;
+}
+
 /** A full-screen prayer-times display, themeable per room. */
 export interface Timetable {
   id: string;
@@ -129,6 +147,10 @@ export interface Timetable {
   ticker?: Ticker;
   /** ticker scroll speed, 1 (slow) … 10 (fast); default 5 */
   tickerSpeed?: number;
+  /** hadith overlay shown during salah (minutes after each Iqāmah) */
+  salahHadith?: SalahHadith;
+  /** "prohibited time" notice before the Dhuhr Adhan (zawāl) */
+  prohibitedNotice?: ProhibitedNotice;
   footerNote: string;
   createdAt: string;
 }

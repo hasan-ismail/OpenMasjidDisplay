@@ -2,8 +2,8 @@
 // Copyright (C) 2026 OpenMasjid-Solutions
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage } from '../types';
-import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCopy, IconClock, IconExpand, useToast } from '../ui';
+import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage, SalahHadith, ProhibitedNotice } from '../types';
+import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCopy, IconClock, IconExpand, IconCalendar, useToast } from '../ui';
 import { timezoneOptions } from '../timezones';
 
 interface Props {
@@ -157,8 +157,8 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }));
   const popout = tt && !fullPage ? () => window.open(`${window.location.pathname}?edit=${tt.id}`, '_blank') : undefined;
 
-  // The screens rotate the layout every 15 min when "Rotate layouts" is on; in the
-  // editor we can't wait 15 min, so cycle the preview through the three layouts
+  // The screens rotate the layout every 5 min when "Rotate layouts" is on; in the
+  // editor we can't wait 5 min, so cycle the preview through the three layouts
   // quickly so you can see what it'll do. (The live display still uses the 15-min clock.)
   const CAROUSEL_LAYOUTS: TimetableLayout[] = ['centered', 'clockTop', 'split'];
   const [demoIdx, setDemoIdx] = useState(0);
@@ -322,6 +322,15 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   const setMsg = (i: number, patch: Partial<TickerMessage>) => setTk({ messages: tk.messages.map((mm, j) => (j === i ? { ...mm, ...patch } : mm)) });
   const delMsg = (i: number) => setTk({ messages: tk.messages.filter((_, j) => j !== i) });
 
+  // ── During-salah hadith + prohibited-time notice ──
+  const sh: SalahHadith = f.salahHadith ?? { enabled: false, minutes: 10, items: [] };
+  const setSh = (patch: Partial<SalahHadith>) => set('salahHadith', { ...sh, ...patch });
+  const addHadith = () => setSh({ items: [...sh.items, ''] });
+  const setHadith = (i: number, v: string) => setSh({ items: sh.items.map((x, j) => (j === i ? v : x)) });
+  const delHadith = (i: number) => setSh({ items: sh.items.filter((_, j) => j !== i) });
+  const pn: ProhibitedNotice = f.prohibitedNotice ?? { enabled: false, minutes: 10 };
+  const setPn = (patch: Partial<ProhibitedNotice>) => set('prohibitedNotice', { ...pn, ...patch });
+
   const content = (
       <div className="studio">
         <div className="studio__preview">
@@ -329,7 +338,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           <p className="hint" style={{ textAlign: 'center', marginBlockStart: '0.5rem' }}>
             {f.layoutCarousel ? (
               <>
-                <IconClock size={12} /> Rotating preview — your screens cycle these every 15 min. Click a name, the masjid title or the footer to rename it.
+                <IconClock size={12} /> Rotating preview — your screens cycle these every 5 min. Click a name, the masjid title or the footer to rename it.
               </>
             ) : (
               <>
@@ -354,7 +363,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           </Field>
           <div className="toggle-row row-between" style={{ marginBlockEnd: '0.9rem' }}>
             <span className="label" style={{ margin: 0 }}>
-              Rotate layouts over the day <span className="hint">— cycles centered / spotlight / split every 15 min (prevents TV burn-in)</span>
+              Rotate layouts over the day <span className="hint">— cycles centered / spotlight / split every 5 min (prevents TV burn-in)</span>
             </span>
             <Toggle checked={f.layoutCarousel} onChange={(v) => set('layoutCarousel', v)} label="Rotate layouts over the day" />
           </div>
@@ -654,6 +663,58 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           </div>
           <button type="button" className="btn btn--ghost btn--sm" style={{ marginBlockStart: '0.5rem' }} onClick={addMsg}><IconPlus size={14} /> Add message</button>
         </div>
+
+        <div className="card section">
+          <h3 className="section-title">During prayer (hadith)</h3>
+          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.7rem' }}>
+            <span className="label" style={{ margin: 0 }}>Show a hadith over the screen while the congregation prays</span>
+            <Toggle checked={sh.enabled} onChange={(v) => setSh({ enabled: v })} label="Show a hadith during prayer" />
+          </div>
+          {sh.enabled && (
+            <>
+              <Field label="Show for (minutes after each Iqamah)" hint="How long the hadith stays on screen once a prayer's Iqamah time arrives.">
+                <input className="input" type="number" min={1} max={60} value={sh.minutes} onChange={(e) => setSh({ minutes: Number(e.target.value) })} />
+              </Field>
+              <p className="hint" style={{ marginBlockEnd: '0.4rem' }}>Add a few — the screen rotates through them.</p>
+              <div className="list">
+                {sh.items.map((it, i) => (
+                  <div key={i} className="msg-row">
+                    <textarea className="input" rows={2} value={it} onChange={(e) => setHadith(i, e.target.value)} placeholder="e.g. The Prophet ﷺ said: “The best of you are those who learn the Qur’an and teach it.”" style={{ resize: 'vertical' }} />
+                    <button type="button" className="icon-btn" onClick={() => delHadith(i)} aria-label="Remove hadith"><IconTrash size={15} /></button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="btn btn--ghost btn--sm" style={{ marginBlockStart: '0.5rem' }} onClick={addHadith}><IconPlus size={14} /> Add hadith</button>
+            </>
+          )}
+        </div>
+
+        <div className="card section">
+          <h3 className="section-title">Prohibited time notice</h3>
+          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.7rem' }}>
+            <span className="label" style={{ margin: 0 }}>Show a full-screen notice before Dhuhr (zawāl / sun at its zenith)</span>
+            <Toggle checked={pn.enabled} onChange={(v) => setPn({ enabled: v })} label="Show the prohibited-time notice" />
+          </div>
+          {pn.enabled && (
+            <Field label="Show for (minutes before the Dhuhr Adhan)" hint="A countdown notice appears this many minutes before Dhuhr, when voluntary prayer is discouraged.">
+              <input className="input" type="number" min={1} max={45} value={pn.minutes} onChange={(e) => setPn({ minutes: Number(e.target.value) })} />
+            </Field>
+          )}
+        </div>
+
+        {tt && (
+          <div className="card section">
+            <h3 className="section-title">Print</h3>
+            <p className="hint" style={{ marginBlockEnd: '0.6rem' }}>Open a printable month of prayer times — then use your browser's “Save as PDF”.</p>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => window.open(api.timetablePrintUrl(tt.id), '_blank', 'noopener')}
+            >
+              <IconCalendar size={14} /> Print this month
+            </button>
+          </div>
+        )}
       </div>
   );
 

@@ -270,8 +270,8 @@ function Shell({
           <MasjidMark size={24} />
           <b>OpenMasjid Display</b>
         </div>
-        <Clock />
         <span className="spacer" />
+        <Clock />
         <ProfileMenu
           dark={dark}
           onToggleTheme={toggleTheme}
