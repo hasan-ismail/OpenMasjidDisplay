@@ -12,6 +12,9 @@ export interface UseApp {
   hasPassword: boolean;
   /** whether OpenMasjidOS sign-on is available for this install */
   ssoEnabled: boolean;
+  /** whether the OpenMasjidOS platform was reachable on the last session check
+   *  (false → SSO can't complete right now; offer the local-password recovery) */
+  ssoReachable: boolean;
   loading: boolean;
   refetch: () => Promise<void>;
   onAuthed: () => void;
@@ -22,6 +25,7 @@ export function useAppState(): UseApp {
   const [authed, setAuthed] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [ssoReachable, setSsoReachable] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -43,6 +47,7 @@ export function useAppState(): UseApp {
       const s = await api.session();
       setHasPassword(!!s.hasPassword);
       setSsoEnabled(!!s.sso?.enabled);
+      setSsoReachable(s.sso?.reachable !== false);
       if (s.authed) {
         await refetch();
         return;
@@ -110,5 +115,5 @@ export function useAppState(): UseApp {
     void checkSession();
   }, [checkSession]);
 
-  return { state, authed, hasPassword, ssoEnabled, loading, refetch, onAuthed };
+  return { state, authed, hasPassword, ssoEnabled, ssoReachable, loading, refetch, onAuthed };
 }

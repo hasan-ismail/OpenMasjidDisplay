@@ -71,7 +71,7 @@ function EditorPage({ id, state, refetch }: { id: string; state: AppState; refet
 }
 
 function Root() {
-  const { state, authed, hasPassword, ssoEnabled, loading, refetch, onAuthed } = useAppState();
+  const { state, authed, hasPassword, ssoEnabled, ssoReachable, loading, refetch, onAuthed } = useAppState();
   const [tab, setTab] = useState<Tab>('screens');
   const [setupInstead, setSetupInstead] = useState(false);
   const editId = new URLSearchParams(window.location.search).get('edit');
@@ -88,6 +88,7 @@ function Root() {
     <Login
       onDone={onAuthed}
       ssoEnabled={ssoEnabled}
+      ssoReachable={ssoReachable}
       hasPassword={hasPassword}
       onSetupInstead={!hasPassword ? () => setSetupInstead(true) : undefined}
     />
@@ -296,11 +297,13 @@ function Shell({
 function Login({
   onDone,
   ssoEnabled,
+  ssoReachable,
   hasPassword,
   onSetupInstead,
 }: {
   onDone: () => void;
   ssoEnabled: boolean;
+  ssoReachable: boolean;
   hasPassword: boolean;
   onSetupInstead?: () => void;
 }) {
@@ -308,32 +311,62 @@ function Login({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Under OpenMasjidOS with no local password: there's nothing to type — the user
-  // just needs to open the app from the dashboard (which carries the platform
-  // session). Offer a fallback to set a password in case the platform is down.
+  // Under OpenMasjidOS with no local password: normally there's nothing to type —
+  // open the app from the dashboard (which carries the platform session). But if the
+  // platform is unreachable (a restore onto a new box, OS briefly down), SSO can't
+  // complete — so guide the admin to the always-available local-password recovery
+  // instead of letting "continue" loop silently.
   if (ssoEnabled && !hasPassword) {
+    const unreachable = !ssoReachable;
     return (
       <div className="auth-wrap">
         <Scene />
         <div className="auth-card glass-raised">
           <div className="auth-logo"><MasjidMark size={44} /></div>
           <h1 className="page-title" style={{ textAlign: 'center' }}>OpenMasjid Display</h1>
-          <p className="page-sub" style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-            This panel uses your OpenMasjidOS sign-in. Open it from your OpenMasjidOS
-            dashboard to continue.
-          </p>
-          <button className="btn btn--primary btn--block" onClick={onDone}>
-            I’ve signed in — continue
-          </button>
-          {onSetupInstead && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--block"
-              style={{ marginTop: '0.6rem' }}
-              onClick={onSetupInstead}
-            >
-              Set a password instead
-            </button>
+          {unreachable ? (
+            <p className="page-sub" style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              Can’t reach OpenMasjidOS right now, so automatic sign-in isn’t available.
+              Try again in a moment, or set a password to get in.
+            </p>
+          ) : (
+            <p className="page-sub" style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              This panel uses your OpenMasjidOS sign-in. Open it from your OpenMasjidOS
+              dashboard to continue.
+            </p>
+          )}
+          {unreachable ? (
+            <>
+              {onSetupInstead && (
+                <button className="btn btn--primary btn--block" onClick={onSetupInstead}>
+                  Set a password to get in
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn--ghost btn--block"
+                style={{ marginTop: '0.6rem' }}
+                onClick={onDone}
+              >
+                Retry sign-in
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn--primary btn--block" onClick={onDone}>
+                I’ve signed in — continue
+              </button>
+              {onSetupInstead && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--block"
+                  style={{ marginTop: '0.6rem' }}
+                  onClick={onSetupInstead}
+                >
+                  Set a password instead
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

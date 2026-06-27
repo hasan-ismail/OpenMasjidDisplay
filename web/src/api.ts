@@ -46,7 +46,7 @@ export const api = {
       needsSetup: boolean;
       authed: boolean;
       hasPassword: boolean;
-      sso: { enabled: boolean; username?: string };
+      sso: { enabled: boolean; reachable?: boolean; username?: string };
     }>('GET', '/api/session'),
   setup: (password: string) => req<{ ok: boolean }>('POST', '/api/setup', { password }),
   login: (password: string) => req<{ ok: boolean }>('POST', '/api/login', { password }),

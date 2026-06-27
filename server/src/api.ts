@@ -17,7 +17,7 @@ import {
   setCookieHeader,
   clearCookieHeader,
 } from './auth';
-import { platformUser, ssoConfigured, notify } from './fabric';
+import { probePlatform, ssoConfigured, notify } from './fabric';
 import { LoginLimiter } from './rateLimit';
 import { THEMES } from './render/theme';
 import {
@@ -189,16 +189,20 @@ export function createApi(deps: Deps) {
       if (pathname === '/api/session' && method === 'GET') {
         let isAuthed = authed(req);
         let username: string | undefined;
+        // True unless we tried to reach the platform and couldn't — used by the UI to
+        // tell "open from the dashboard" apart from "OpenMasjidOS is unreachable".
+        let reachable = true;
         // OpenMasjidOS SSO: if not already signed in here but the visitor carries
         // a platform session the platform confirms, mint a local session so the
         // rest of the API (and the WebSocket) treats them as signed in. Falls back
         // silently to local login when SSO is absent or the platform is down.
         if (!isAuthed && ssoConfigured()) {
-          const user = await platformUser(req);
-          if (user) {
+          const probe = await probePlatform(req);
+          reachable = probe.reachable;
+          if (probe.username) {
             res.setHeader('set-cookie', setCookieHeader(makeToken(store.secret, SSO_SESSION_MS), SSO_SESSION_MS));
             isAuthed = true;
-            username = user;
+            username = probe.username;
           }
         }
         return sendJson(res, 200, {
@@ -207,14 +211,16 @@ export function createApi(deps: Deps) {
           needsSetup: !store.db.admin && !ssoConfigured(),
           authed: isAuthed,
           hasPassword: !!store.db.admin,
-          sso: { enabled: ssoConfigured(), username },
+          sso: { enabled: ssoConfigured(), reachable, username },
         });
       }
       if (pathname === '/api/setup' && method === 'POST') {
         const body = await readBody(req);
-        // Under OpenMasjidOS, sign-in is the dashboard's job (SSO) — there is no local
-        // admin password to claim, so refuse setup to close the open pre-setup window.
-        if (ssoConfigured()) return sendJson(res, 403, { error: 'This panel signs in through OpenMasjidOS.' });
+        // The local password is an ALWAYS-AVAILABLE recovery — even under SSO. We do
+        // NOT refuse setup while SSO is configured: if the platform is unreachable
+        // (a restore onto a new box, the OS briefly down), refusing here would leave
+        // no way into the panel. SSO stays the convenient default; this is the way in
+        // when it can't be reached. (Only block when an admin already exists.)
         if (store.db.admin) return sendJson(res, 409, { error: 'The control panel is already set up.' });
         const pw = String(body.password ?? '');
         if (pw.length < 8) return sendJson(res, 400, { error: 'Please choose a password of at least 8 characters.' });

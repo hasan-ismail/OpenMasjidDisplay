@@ -156,18 +156,32 @@ function nowMs(): number {
   return Date.now();
 }
 
+export interface PlatformProbe {
+  /** the platform-confirmed username, or null if the visitor isn't signed in there */
+  username: string | null;
+  /** did we actually REACH the platform? false = not configured, network error, or
+   *  timeout. Distinguishes "not signed in" from "OpenMasjidOS is down / wrong
+   *  address" so the panel can offer the local-password recovery instead of looping
+   *  (a momentarily-unreachable platform must never permanently lock you out). */
+  reachable: boolean;
+}
+
 /**
- * Returns the platform username if the request carries a session the platform
- * confirms, or null otherwise. Only ever validates the cookie actually present
- * on THIS request (never a client-supplied username).
+ * Probe the platform: validate the omos_session cookie present on THIS request (if
+ * any) AND report whether the platform was reachable at all. Only ever validates the
+ * cookie actually on the request (never a client-supplied username).
  */
-export async function platformUser(req: IncomingMessage): Promise<string | null> {
-  if (!config.omosBaseUrl || !config.omosAppSecret) return null;
+export async function probePlatform(req: IncomingMessage): Promise<PlatformProbe> {
+  if (!config.omosBaseUrl || !config.omosAppSecret) return { username: null, reachable: false };
   const token = omosCookie(req);
-  if (!token) return null;
+  if (!token) {
+    // No session cookie to validate — still check reachability so the UI can tell
+    // "open it from the dashboard" apart from "the platform is unreachable".
+    return { username: null, reachable: await platformReachable() };
+  }
 
   const cached = positiveCache.get(token);
-  if (cached && cached.expires > nowMs()) return cached.username;
+  if (cached && cached.expires > nowMs()) return { username: cached.username, reachable: true };
 
   warnIfCleartextSecret(); // about to send the per-app secret — flag it if cleartext to a public host
   try {
@@ -184,20 +198,47 @@ export async function platformUser(req: IncomingMessage): Promise<string | null>
       redirect: 'error', // don't follow a redirect to some other (internal) host
     });
     clearTimeout(t);
-    if (!res.ok) return null;
-    const j = (await res.json()) as { authenticated?: boolean; username?: unknown };
-    if (j.authenticated === true) {
-      const username = (typeof j.username === 'string' ? j.username : '').trim().slice(0, 64) || 'OpenMasjidOS';
-      positiveCache.set(token, { username, expires: nowMs() + CACHE_MS });
-      // Keep the cache from growing without bound on a busy panel.
-      if (positiveCache.size > 256) {
-        for (const [k, v] of positiveCache) if (v.expires <= nowMs()) positiveCache.delete(k);
+    // Any HTTP response (even non-200 / "not signed in") means the platform is reachable.
+    if (res.ok) {
+      const j = (await res.json()) as { authenticated?: boolean; username?: unknown };
+      if (j.authenticated === true) {
+        const username = (typeof j.username === 'string' ? j.username : '').trim().slice(0, 64) || 'OpenMasjidOS';
+        positiveCache.set(token, { username, expires: nowMs() + CACHE_MS });
+        // Keep the cache from growing without bound on a busy panel.
+        if (positiveCache.size > 256) {
+          for (const [k, v] of positiveCache) if (v.expires <= nowMs()) positiveCache.delete(k);
+        }
+        return { username, reachable: true };
       }
-      return username;
     }
-    return null;
+    return { username: null, reachable: true };
   } catch (err) {
     log.debug(`platform session check failed: ${err instanceof Error ? err.message : err}`);
-    return null;
+    return { username: null, reachable: false };
   }
+}
+
+/** Cheap, unauthenticated "is the platform up?" check, used only when there's no
+ *  session cookie to validate. The appearance endpoint is public + CORS-enabled; any
+ *  response (even an error status) proves we reached it. */
+async function platformReachable(): Promise<boolean> {
+  if (!config.omosBaseUrl) return false;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    await fetch(`${config.omosBaseUrl}/api/public/appearance`, { signal: ctrl.signal, redirect: 'error' });
+    clearTimeout(t);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns the platform username if the request carries a session the platform
+ * confirms, or null otherwise. Thin wrapper over probePlatform for callers that
+ * only need the identity.
+ */
+export async function platformUser(req: IncomingMessage): Promise<string | null> {
+  return (await probePlatform(req)).username;
 }
