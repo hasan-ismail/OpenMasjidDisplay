@@ -11,6 +11,29 @@ import {
 } from 'react';
 import markUrl from './assets/mark.png';
 
+/** Copy text to the clipboard, with a fallback for non-secure contexts (plain HTTP
+ *  over a LAN IP): navigator.clipboard only exists in a secure context, so fall back
+ *  to a hidden <textarea> + execCommand('copy'). Rejects if both paths fail, so the
+ *  caller can show an error. */
+export function copyText(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  return new Promise((resolve, reject) => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error('copy failed'));
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error('copy failed'));
+    }
+  });
+}
+
 /* ── Icons (simple stroke set, lucide-flavoured) ─────────────────────────── */
 type IP = { size?: number };
 function Svg({ size = 18, children }: IP & { children: ReactNode }) {

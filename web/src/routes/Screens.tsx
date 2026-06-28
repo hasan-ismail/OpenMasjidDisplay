@@ -15,27 +15,9 @@ import {
   IconCheck,
   IconRefresh,
   MasjidMark,
+  copyText,
   useToast,
 } from '../ui';
-
-function copyText(text: string): Promise<void> {
-  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
-  return new Promise((resolve) => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-    } catch {
-      /* ignore */
-    }
-    document.body.removeChild(ta);
-    resolve();
-  });
-}
 
 interface Props {
   state: AppState;

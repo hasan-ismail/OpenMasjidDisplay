@@ -4,7 +4,7 @@ id: display
 name: OpenMasjid Display
 tagline: Run prayer timetables, cameras and HDMI on every screen in your masjid — over your network
 category: displays
-version: 0.30.0
+version: 0.31.0
 author: OpenMasjid-Solutions
 license: AGPL-3.0-only
 icon: icon.png
@@ -62,3 +62,10 @@ notifications: true
 # can point at a public address. No secrets; fails soft to a LAN link when remote
 # access is off.
 domain: true
+# Serve the CONTROL PANEL over HTTPS. The platform runs a TLS proxy on a dedicated
+# port (terminating with the dashboard's cert) in front of the first published port
+# (the control panel) and makes "Open" use it. This gives the panel a secure context
+# — needed for clipboard (copy the widget embed code) and Secure cookies. The plain
+# HTTP port stays published as a legacy fallback, and the volunteer page (the second
+# published port) is NOT proxied, so it stays HTTP as intended.
+https: true

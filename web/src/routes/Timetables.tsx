@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage, SalahHadith, HadithItem, ProhibitedNotice, IqamahCountdown, TimetableWidget } from '../types';
-import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCopy, IconClock, IconExpand, IconCalendar, useToast } from '../ui';
+import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCopy, IconClock, IconExpand, IconCalendar, copyText, useToast } from '../ui';
 import { timezoneOptions } from '../timezones';
 
 interface Props {
@@ -797,8 +797,8 @@ function WidgetEmbed({ id }: { id: string }) {
   if (!info) return <p className="hint"><Spinner /> Preparing embed code…</p>;
   const url = info.publicUrl || info.localUrl;
   const copy = async (text: string, what: string) => {
-    try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
-    catch { toast('Could not copy to the clipboard.', 'error'); }
+    try { await copyText(text); toast(`${what} copied.`); }
+    catch { toast('Could not copy. Select the text and copy manually.', 'error'); }
   };
   return (
     <div>
