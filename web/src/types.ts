@@ -38,6 +38,7 @@ export interface HadithItem { ar: string; en: string }
 export interface SalahHadith { enabled: boolean; minutes: number; items: HadithItem[] }
 export interface ProhibitedNotice { enabled: boolean; minutes: number }
 export interface IqamahCountdown { enabled: boolean; minutes: number }
+export interface TimetableWidget { enabled: boolean }
 export interface Timetable {
   id: string;
   name: string;
@@ -80,6 +81,7 @@ export interface Timetable {
   salahHadith?: SalahHadith;
   prohibitedNotice?: ProhibitedNotice;
   iqamahCountdown?: IqamahCountdown;
+  widget?: TimetableWidget;
   footerNote: string;
   createdAt: string;
 }

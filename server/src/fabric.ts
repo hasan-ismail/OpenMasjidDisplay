@@ -133,6 +133,47 @@ export async function notify(payload: NotifyPayload): Promise<{ delivered: boole
   }
 }
 
+export interface SiteInfo {
+  /** is remote access (the admin's Cloudflare tunnel) enabled? */
+  enabled: boolean;
+  /** the app's public base URL behind the tunnel (e.g. https://masjid.org/display), or '' */
+  publicUrl: string;
+  /** the path the app is served under behind the tunnel (e.g. /display), or '' */
+  basePath: string;
+}
+
+/**
+ * Ask the platform for this app's PUBLIC URL behind the admin's Cloudflare tunnel
+ * (GET /api/fabric/site, identity-bound via the per-app secret + the `domain`
+ * capability). Used so the web-widget embed code can point at a public address when
+ * remote access is on. FAILS SOFT: no Fabric, not capable, tunnel off, or any error
+ * → null, and callers fall back to the LAN URL. Never throws.
+ */
+export async function siteInfo(): Promise<SiteInfo | null> {
+  if (!config.omosBaseUrl || !config.omosAppSecret) return null;
+  warnIfCleartextSecret();
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(`${config.omosBaseUrl}/api/fabric/site`, {
+      headers: { 'x-openmasjid-app-secret': config.omosAppSecret },
+      signal: ctrl.signal,
+      redirect: 'error',
+    });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const j = (await res.json()) as { enabled?: boolean; publicUrl?: unknown; basePath?: unknown };
+    return {
+      enabled: j.enabled === true,
+      publicUrl: typeof j.publicUrl === 'string' ? j.publicUrl : '',
+      basePath: typeof j.basePath === 'string' ? j.basePath : '',
+    };
+  } catch (err) {
+    log.debug(`fabric site lookup failed: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
 /** Pull the platform's session token out of the request's Cookie header. */
 function omosCookie(req: IncomingMessage): string | null {
   const raw = req.headers.cookie;

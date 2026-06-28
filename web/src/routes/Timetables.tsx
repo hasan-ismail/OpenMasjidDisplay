@@ -2,7 +2,7 @@
 // Copyright (C) 2026 OpenMasjid-Solutions
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage, SalahHadith, HadithItem, ProhibitedNotice, IqamahCountdown } from '../types';
+import type { AppState, Timetable, TimetableLayout, IqamahRule, IqamahConfig, Hotspot, Announcements, Ticker, TickerMessage, SalahHadith, HadithItem, ProhibitedNotice, IqamahCountdown, TimetableWidget } from '../types';
 import { Modal, Field, Toggle, Spinner, IconPlus, IconEdit, IconTrash, IconCopy, IconClock, IconExpand, IconCalendar, useToast } from '../ui';
 import { timezoneOptions } from '../timezones';
 
@@ -332,6 +332,8 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   const setPn = (patch: Partial<ProhibitedNotice>) => set('prohibitedNotice', { ...pn, ...patch });
   const ic: IqamahCountdown = f.iqamahCountdown ?? { enabled: false, minutes: 5 };
   const setIc = (patch: Partial<IqamahCountdown>) => set('iqamahCountdown', { ...ic, ...patch });
+  const wg: TimetableWidget = f.widget ?? { enabled: false };
+  const setWg = (patch: Partial<TimetableWidget>) => set('widget', { ...wg, ...patch });
 
   const content = (
       <div className="studio">
@@ -733,6 +735,17 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
             </button>
           </div>
         )}
+
+        <div className="card section">
+          <h3 className="section-title">Website widget</h3>
+          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.7rem' }}>
+            <span className="label" style={{ margin: 0 }}>Let your website embed this timetable's times (just the times, vertical list)</span>
+            <Toggle checked={wg.enabled} onChange={(v) => setWg({ enabled: v })} label="Allow embedding the prayer-times widget" />
+          </div>
+          {wg.enabled && (tt ? <WidgetEmbed id={tt.id} /> : (
+            <p className="hint">Save this timetable, then reopen to get the embed code.</p>
+          ))}
+        </div>
       </div>
   );
 
@@ -767,6 +780,45 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
     >
       {content}
     </Modal>
+  );
+}
+
+/** The website-widget embed code + preview for a saved timetable. */
+function WidgetEmbed({ id }: { id: string }) {
+  const toast = useToast();
+  const [info, setInfo] = useState<{ enabled: boolean; localUrl: string; publicUrl: string; snippet: string } | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    api.widgetInfo(id).then((i) => alive && setInfo(i)).catch(() => alive && setErr(true));
+    return () => { alive = false; };
+  }, [id]);
+  if (err) return <p className="hint">Couldn't load the embed code.</p>;
+  if (!info) return <p className="hint"><Spinner /> Preparing embed code…</p>;
+  const url = info.publicUrl || info.localUrl;
+  const copy = async (text: string, what: string) => {
+    try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
+    catch { toast('Could not copy to the clipboard.', 'error'); }
+  };
+  return (
+    <div>
+      <p className="hint" style={{ marginBlockEnd: '0.5rem' }}>
+        Paste this into your website to show a live, auto-updating prayer-times box. Save the timetable after turning this on.
+      </p>
+      <Field label="Embed code">
+        <textarea className="input" rows={3} readOnly value={info.snippet} onFocus={(e) => e.currentTarget.select()} style={{ fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }} />
+      </Field>
+      <div className="row" style={{ gap: '0.5rem', marginBlockStart: '0.5rem', flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={() => copy(info.snippet, 'Embed code')}><IconCopy size={14} /> Copy embed code</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={() => copy(url, 'Link')}><IconCopy size={14} /> Copy link</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={() => window.open(url, '_blank', 'noopener')}><IconExpand size={14} /> Preview</button>
+      </div>
+      <p className="hint" style={{ marginBlockStart: '0.5rem' }}>
+        {info.publicUrl
+          ? 'Public link — works anywhere (via your OpenMasjidOS remote access).'
+          : 'Local-network link. Turn on remote access (Cloudflare) in OpenMasjidOS to get a public link that works on the open internet.'}
+      </p>
+    </div>
   );
 }
 

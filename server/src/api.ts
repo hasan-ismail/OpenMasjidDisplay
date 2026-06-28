@@ -17,7 +17,9 @@ import {
   setCookieHeader,
   clearCookieHeader,
 } from './auth';
-import { probePlatform, ssoConfigured, notify } from './fabric';
+import { probePlatform, ssoConfigured, notify, siteInfo } from './fabric';
+import { widgetData } from './render/svg';
+import { renderWidgetHtml } from './widget';
 import { LoginLimiter } from './rateLimit';
 import { THEMES } from './render/theme';
 import {
@@ -185,6 +187,41 @@ export function createApi(deps: Deps) {
     try {
       // ---- Unauthenticated endpoints --------------------------------------
       if (pathname === '/healthz') return sendJson(res, 200, { ok: true });
+
+      // ---- Public embeddable widget (no auth; only for opted-in timetables) ------
+      // Matches /w/<id> and /w/<id>.json, optionally behind the Cloudflare-tunnel base
+      // path (e.g. /display/w/<id>) — the widget polls a path relative to itself, so
+      // it works both on the LAN and behind the tunnel.
+      const widgetMatch = /^(?:\/[a-z0-9-]+)?\/w\/([\w-]+)(\.json)?$/.exec(pathname);
+      if (widgetMatch && method === 'GET') {
+        const tt = store.db.timetables.find((t) => t.id === widgetMatch[1]);
+        // 404 (not 403) when the widget is off, so an off timetable's id isn't probeable.
+        if (!tt || !tt.widget?.enabled) {
+          res.writeHead(404, { 'content-type': 'text/plain' });
+          res.end('Not found.');
+          return;
+        }
+        const data = widgetData(tt, new Date());
+        if (widgetMatch[2]) {
+          // JSON feed — CORS-open so a masjid can also build their own UI from it.
+          res.writeHead(200, {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': 'no-store',
+            'access-control-allow-origin': '*',
+          });
+          res.end(JSON.stringify(data));
+          return;
+        }
+        const html = renderWidgetHtml(data, `${pathname}.json`);
+        // Explicitly allow embedding in a masjid's own site (the widget is meant to be framed).
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+          'content-security-policy': 'frame-ancestors *',
+        });
+        res.end(html);
+        return;
+      }
 
       if (pathname === '/api/session' && method === 'GET') {
         let isAuthed = authed(req);
@@ -682,6 +719,24 @@ export function createApi(deps: Deps) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         res.end(html);
         return;
+      }
+      // Embed info for the editor: the widget's LAN url, its public (tunnel) url if
+      // remote access is on, and a ready-to-paste <iframe> snippet.
+      const widgetInfoMatch = /^\/api\/timetables\/([\w-]+)\/widget-info$/.exec(pathname);
+      if (widgetInfoMatch && method === 'GET') {
+        const tt = store.db.timetables.find((t) => t.id === widgetInfoMatch[1]);
+        if (!tt) return sendJson(res, 404, { error: 'Timetable not found.' });
+        const host = typeof req.headers.host === 'string' ? req.headers.host : '';
+        const localUrl = host ? `http://${host}/w/${tt.id}` : '';
+        // Behind the admin's Cloudflare tunnel, the app's public base already includes
+        // its path (e.g. https://masjid.org/display); the widget lives under /w/<id>.
+        const site = await siteInfo();
+        const publicUrl = site?.enabled && site.publicUrl ? `${site.publicUrl}/w/${tt.id}` : '';
+        const embed = publicUrl || localUrl;
+        const snippet = embed
+          ? `<iframe src="${embed}" title="Prayer times" loading="lazy" style="border:0;width:100%;max-width:420px;height:480px"></iframe>`
+          : '';
+        return sendJson(res, 200, { enabled: !!tt.widget?.enabled, localUrl, publicUrl, snippet });
       }
       const prevMatch = /^\/api\/preview\/([\w-]+)$/.exec(pathname);
       if (prevMatch && method === 'GET') {

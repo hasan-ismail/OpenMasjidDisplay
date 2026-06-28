@@ -20,18 +20,18 @@ const log = makeLog('fonts');
 const DIRS = ['/usr/share/fonts', '/usr/local/share/fonts'];
 
 // The curated faces, in priority order. Matched on the file's basename (without
-// extension). Keep this small — every entry is parsed on every render.
+// extension). Keep this small — EVERY file here is parsed on EVERY frame, so a
+// leaner set means faster renders (fewer per-frame ms = the per-second video loop
+// keeps up and the countdown doesn't skip a second on a busy box). The display only
+// ever draws with the sans + Arabic families, so we deliberately DON'T load serif.
 const PRIORITY = [
   'NotoSans-Regular',
   'NotoSans-Bold',
-  'NotoSerif-Regular',
-  'NotoSerif-Bold',
   'NotoNaskhArabic-Regular',
   'NotoSansArabic-Regular',
   'DejaVuSans',
-  'DejaVuSerif',
 ];
-const MAX_FONTS = 8;
+const MAX_FONTS = 6;
 
 export interface ResvgFontOptions {
   fontFiles?: string[];
@@ -77,6 +77,19 @@ export function fontOptions(): ResvgFontOptions {
     if (hit && !chosen.includes(hit)) chosen.push(hit);
     if (chosen.length >= MAX_FONTS) break;
   }
+  // Arabic safety net: recent Noto ships Arabic as VARIABLE fonts whose basenames
+  // don't match "…-Regular" (e.g. NotoNaskhArabic[wght].ttf), so the exact-match
+  // loop above misses them and Arabic renders as tofu boxes. If no Arabic face got
+  // picked, grab one by substring (Naskh preferred — it's the traditional Qur'anic
+  // hand — then Sans Arabic), so hadith/labels in Arabic actually shape.
+  const haveArabic = chosen.some((f) => /arabic/i.test(path.basename(f)));
+  if (!haveArabic && chosen.length < MAX_FONTS) {
+    const ar =
+      all.find((f) => /NotoNaskhArabic/i.test(path.basename(f))) ??
+      all.find((f) => /NotoSansArabic/i.test(path.basename(f))) ??
+      all.find((f) => /arabic/i.test(path.basename(f)));
+    if (ar && !chosen.includes(ar)) chosen.push(ar);
+  }
 
   if (chosen.length === 0) {
     log.warn('no bundled fonts found; loading system fonts (slower)');
@@ -86,14 +99,16 @@ export function fontOptions(): ResvgFontOptions {
 
   primaryFont = chosen.find((f) => /NotoSans-Bold/i.test(f)) ?? chosen.find((f) => /NotoSans-Regular/i.test(f)) ?? chosen[0] ?? null;
   const haveNotoSans = chosen.some((f) => /NotoSans-/.test(path.basename(f)));
-  const haveNotoSerif = chosen.some((f) => /NotoSerif-/.test(path.basename(f)));
+  const sans = haveNotoSans ? 'Noto Sans' : 'DejaVu Sans';
   log.info(`using ${chosen.length} of ${all.length} bundled font file(s) for rendering`);
   cached = {
     fontFiles: chosen,
     loadSystemFonts: false,
-    defaultFontFamily: haveNotoSans ? 'Noto Sans' : 'DejaVu Sans',
-    serifFamily: haveNotoSerif ? 'Noto Serif' : 'DejaVu Serif',
-    sansSerifFamily: haveNotoSans ? 'Noto Sans' : 'DejaVu Sans',
+    defaultFontFamily: sans,
+    // We don't bundle a serif (the display is all sans) — map serif → the sans we
+    // loaded so any stray serif request still resolves to a real, loaded face.
+    serifFamily: sans,
+    sansSerifFamily: sans,
   };
   return cached;
 }

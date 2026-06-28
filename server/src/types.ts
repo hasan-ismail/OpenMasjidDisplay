@@ -101,6 +101,13 @@ export interface IqamahCountdown {
   minutes: number;
 }
 
+/** Public embeddable web widget: a compact vertical list of just the prayer times +
+ *  Jumu'ah (NOT the full TV display), served unauthenticated for this timetable so a
+ *  masjid can embed it on their own website. Off by default. */
+export interface TimetableWidget {
+  enabled: boolean;
+}
+
 /** A full-screen prayer-times display, themeable per room. */
 export interface Timetable {
   id: string;
@@ -166,6 +173,8 @@ export interface Timetable {
   prohibitedNotice?: ProhibitedNotice;
   /** full-screen countdown for the last minutes before each Iqāmah */
   iqamahCountdown?: IqamahCountdown;
+  /** public embeddable web widget (prayer times only) for this timetable */
+  widget?: TimetableWidget;
   footerNote: string;
   createdAt: string;
 }

@@ -12,7 +12,7 @@
  * per-element toggles are honoured; a carousel option rotates the layout over the
  * day to avoid screen burn-in. No sacred/Arabic text appears in decorative chrome.
  */
-import type { Timetable, TimetableLayout, HadithItem } from '../types';
+import type { Timetable, TimetableLayout, HadithItem, TimeFormat, Lang } from '../types';
 import { getPalette, type Palette } from './theme';
 import {
   prayerTimes,
@@ -42,6 +42,10 @@ export function dimsFor(orientation: string, quality: string): Dims {
 // Noto Sans is the bundled equivalent; weight carries the "display" emphasis.
 const FONT_DISPLAY = 'Noto Sans, Noto Sans Arabic, DejaVu Sans, sans-serif';
 const FONT_SANS = 'Noto Sans, Noto Sans Arabic, DejaVu Sans, sans-serif';
+// Arabic-first stack: name the Arabic faces FIRST so resvg shapes Arabic with them
+// directly (it doesn't always fall back from a Latin-only face). Naskh is the
+// traditional hand; Sans Arabic is the modern fallback. Used for Arabic hadith text.
+const FONT_ARABIC = 'Noto Naskh Arabic, Noto Sans Arabic, Noto Sans, DejaVu Sans, sans-serif';
 
 // Glass surfaces are white-translucent regardless of theme, so the scene (or the
 // masjid's photo) shows through them — that is what reads as "glass".
@@ -378,6 +382,15 @@ interface Row {
   minor?: boolean;
   active?: boolean;
   next?: boolean;
+  /** when set (>0) the row is the Nth Jumu'ah → label reads "Jumu'ah 1", "Jumu'ah 2", … */
+  jumuahNum?: number;
+}
+
+/** The on-screen name for a row: the (localized, overridable) label, plus a Jumu'ah
+ *  number when there is more than one Jumu'ah (so two times don't read as Adhan/Iqamah). */
+function rowName(r: Row, L: Record<string, string>): string {
+  const base = L[r.label] ?? r.label;
+  return r.jumuahNum ? `${base} ${r.jumuahNum}` : base;
 }
 
 const PRAYER_LABELS: Record<string, Record<string, string>> = {
@@ -463,7 +476,15 @@ function buildModel(tt: Timetable, now: Date): Model {
   if (isFriday) {
     const j = jFriday;
     const jIq = yearRow?.jumuah ? parseHHMM(yearRow.jumuah) : null;
-    rows.push({ key: 'dhuhr', label: 'jumuah', adhan: j[0] ?? times.dhuhr, iqamah: jIq ?? j[1] ?? null });
+    if (j.length >= 2) {
+      // Multiple Jumu'ah times → one row each ("Jumu'ah 1", "Jumu'ah 2", …), each a
+      // single time. (Previously two times were shown as one Jumu'ah's Adhan/Iqamah.)
+      j.forEach((t, i) =>
+        rows.push({ key: i === 0 ? 'dhuhr' : `jumuah${i + 1}`, label: 'jumuah', jumuahNum: i + 1, adhan: t, iqamah: null }),
+      );
+    } else {
+      rows.push({ key: 'dhuhr', label: 'jumuah', adhan: j[0] ?? times.dhuhr, iqamah: jIq ?? null });
+    }
   } else {
     rows.push({ key: 'dhuhr', label: 'dhuhr', adhan: times.dhuhr, iqamah: iq('dhuhr', times.dhuhr) });
   }
@@ -489,6 +510,55 @@ function buildModel(tt: Timetable, now: Date): Model {
     if (r.key === nextKey) r.next = true;
   }
   return { parts, times, rows, activeKey, nextKey, nextHours, countdownToIqamah, isFriday };
+}
+
+/** One prayer line for the public web widget. */
+export interface WidgetRow {
+  key: string;
+  /** display name (localized + Jumu'ah-numbered) */
+  label: string;
+  /** "h:mm" formatted Adhan time (or null) */
+  adhan: string | null;
+  /** "h:mm" formatted Iqamah time (or null) */
+  iqamah: string | null;
+  active: boolean;
+  next: boolean;
+}
+export interface WidgetData {
+  masjidName: string;
+  hijri: string;
+  gregorian: string;
+  timeFormat: TimeFormat;
+  language: Lang;
+  /** RTL languages render the widget right-to-left */
+  rtl: boolean;
+  rows: WidgetRow[];
+}
+
+/** Compute today's prayer + Jumu'ah times for the embeddable widget (just the times,
+ *  not the full TV scene). Sunrise and other "minor" rows are omitted. */
+export function widgetData(tt: Timetable, now: Date): WidgetData {
+  const m = buildModel(tt, now);
+  const L = labels(tt.language, tt.labels);
+  const lang = (tt.language || 'en') as Lang;
+  return {
+    masjidName: tt.masjidName || 'Our Masjid',
+    hijri: hijri(m.parts, tt.language, tt.hijriOffset ?? 0),
+    gregorian: gregorian(m.parts, tt.language, tt.gregorianOffset ?? 0),
+    timeFormat: tt.timeFormat,
+    language: lang,
+    rtl: lang === 'ar' || lang === 'ur',
+    rows: m.rows
+      .filter((r) => !r.minor) // drop Sunrise — widget shows the 5 prayers + Jumu'ah only
+      .map((r) => ({
+        key: r.key,
+        label: rowName(r, L),
+        adhan: r.adhan != null ? fmtShort(r.adhan, tt.timeFormat) : null,
+        iqamah: r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : null,
+        active: !!r.active,
+        next: !!r.next,
+      })),
+  };
 }
 
 /** Where the sun/moon sits right now (an arc across the sky) + day/night. */
@@ -672,7 +742,7 @@ function prayerCard(x: number, y: number, w: number, h: number, r: Row, p: Palet
   const fill = r.active ? hexToRgba(p.primary, 0.2) : GLASS;
   const stroke = r.active ? p.primary : HAIR;
   const nameColor = r.active ? p.primarySoft : r.next ? p.goldSoft : p.textDim;
-  const name = L[r.label] ?? r.label;
+  const name = rowName(r, L);
   const out: string[] = [];
   out.push(glass(x, y, w, h, cardR, { fill, stroke, sw: r.active ? 2 : 1, glow: r.active ? p.primary : undefined }));
 
@@ -778,7 +848,7 @@ function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, ba
 /** Big H : M : S countdown hero (used by the split / MasjidBox-style layout). The
  *  whole time is one string (so the colons can never overlap the digits), and the
  *  the colons can never overlap the digits. */
-function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms: [number, number, number], p: Palette, L: Record<string, string>, toIqamah = false): string {
+function countdownHero(cx: number, cy: number, w: number, nextName: string, hms: [number, number, number], p: Palette, L: Record<string, string>, toIqamah = false): string {
   const out: string[] = [];
   let numSize = clamp(w * 0.2, 36, 160);
   const timeStr = `${pad2(hms[0])}:${pad2(hms[1])}:${pad2(hms[2])}`;
@@ -787,7 +857,7 @@ function countdownHero(cx: number, cy: number, w: number, nextLabel: string, hms
   if (strW > w * 0.94) numSize *= (w * 0.94) / strW;
   const baseline = cy + numSize * 0.34;
   const eventWord = (toIqamah ? (L.iqamah ?? 'Iqamah') : (L.athan ?? 'Adhan')).toUpperCase();
-  out.push(text(cx, cy - numSize * 0.5, `${(L[nextLabel] ?? nextLabel).toUpperCase()} ${eventWord} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
+  out.push(text(cx, cy - numSize * 0.5, `${nextName.toUpperCase()} ${eventWord} IN`, { size: clamp(numSize * 0.18, 14, 34), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 2 }));
   out.push(text(cx, baseline, timeStr, { size: numSize, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
   return out.join('');
 }
@@ -855,7 +925,7 @@ function splitLeftPanel(
     const nameColor = r.active ? p.primarySoft : r.next ? p.goldSoft : p.text;
     const nameSize = clamp(rowH * 0.34, 12, 30);
     const timeSize = clamp(rowH * 0.34, 12, 30);
-    out.push(text(leftX + pad, midY, L[r.label] ?? r.label, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', editId: `label.${r.label}` }));
+    out.push(text(leftX + pad, midY, rowName(r, L), { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 600, anchor: 'start', editId: `label.${r.label}` }));
     out.push(text(colAdhan, midY, fmtShort(r.adhan, tt.timeFormat), { size: timeSize * 0.92, fill: p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
     out.push(text(colIq, midY, r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : '—', { size: timeSize, fill: r.iqamah != null ? p.text : p.textFaint, family: FONT_DISPLAY, weight: 700, anchor: 'end' }));
   });
@@ -876,7 +946,7 @@ function splitView(
   const heroW = W - P - heroX;
   return (
     splitLeftPanel(tt, m, clock, greg, hij, p, L, P, top, leftW, leftH, logo) +
-    countdownHero(heroX + heroW / 2, (top + bottom) / 2, heroW, m.rows.find((r) => r.next)?.label ?? 'fajr', hms, p, L, m.countdownToIqamah)
+    countdownHero(heroX + heroW / 2, (top + bottom) / 2, heroW, rowName(m.rows.find((r) => r.next) ?? m.rows[0], L), hms, p, L, m.countdownToIqamah)
   );
 }
 
@@ -928,7 +998,7 @@ function spotlightView(
   const out: string[] = [];
   const gap = Math.min(W, H) * 0.018;
   const next = m.rows.find((r) => r.next) ?? m.rows[0];
-  const nextName = (L[next.label] ?? next.label).toString();
+  const nextName = rowName(next, L);
 
   // ── Top bar: brand on the leading side, live clock + date on the trailing side ──
   const barH = H * (portrait ? 0.12 : 0.15);
@@ -1081,34 +1151,51 @@ function overlayActiveNow(tt: Timetable, now: Date): boolean {
 }
 
 /** Calm hadith card over a dimmed scene, shown during salah (Arabic above English). */
-function salahHadithView(item: HadithItem, p: Palette, W: number, H: number): string {
+/** How long each language is shown before switching, in ms (Arabic, then English). */
+const HADITH_PHASE_MS = 10_000;
+
+function salahHadithView(item: HadithItem, now: Date, clock: ClockText, p: Palette, W: number, H: number): string {
   const out: string[] = [];
-  out.push(rect(0, 0, W, H, 0, 'rgba(0,0,0,0.62)'));
-  const cardW = Math.min(W * 0.82, 1400);
-  const cardH = Math.min(H * 0.7, cardW * 0.62);
+  out.push(rect(0, 0, W, H, 0, 'rgba(0,0,0,0.66)'));
+  const cardW = Math.min(W * 0.84, 1500);
+  const cardH = Math.min(H * 0.72, cardW * 0.6);
   const cx = W / 2;
   const cy = H / 2;
   out.push(glass(cx - cardW / 2, cy - cardH / 2, cardW, cardH, Math.min(cardW, cardH) * 0.05, { glow: p.primary }));
+
   const ar = item.ar.trim();
   const en = item.en.trim();
-  const arFs = clamp(W * 0.034, 26, 66);
-  const enFs = clamp(W * 0.024, 18, 46);
-  const arLines = ar ? wrapLines(ar, arFs, cardW * 0.84, 4) : [];
-  const enLines = en ? wrapLines(en, enFs, cardW * 0.84, 5) : [];
-  const arLh = arFs * 1.5;
-  const enLh = enFs * 1.42;
-  const gap = ar && en ? arFs * 0.7 : 0;
-  const blockH = arLines.length * arLh + enLines.length * enLh + gap;
-  let ly = cy - blockH / 2 + (arLines.length ? arFs * 0.8 : enFs * 0.7);
-  for (const ln of arLines) {
-    out.push(text(cx, ly, ln, { size: arFs, fill: p.text, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
-    ly += arLh;
+  // ONE language at a time: Arabic for 10s, then English for 10s, alternating. If only
+  // one is provided, always show it.
+  const both = !!ar && !!en;
+  const showArabic = both ? Math.floor(now.getTime() / HADITH_PHASE_MS) % 2 === 0 : !!ar;
+  const content = showArabic ? ar : en;
+  const isArabic = showArabic && !!ar;
+
+  // Autofit: shrink the font until the wrapped text fits the card, so a long hadith
+  // never overflows the box. Arabic gets a slightly tighter width budget + taller
+  // line-height (it sits taller and connects), and the Arabic font stack.
+  const family = isArabic ? FONT_ARABIC : FONT_DISPLAY;
+  const maxW = cardW * (isArabic ? 0.78 : 0.86);
+  const maxH = cardH * 0.74;
+  const lineFactor = isArabic ? 1.75 : 1.4;
+  let fs = clamp(W * 0.04, 22, 76);
+  let lines = wrapLines(content, fs, maxW, 14);
+  while (lines.length * fs * lineFactor > maxH && fs > 14) {
+    fs -= 2;
+    lines = wrapLines(content, fs, maxW, 14);
   }
-  if (ar && en) ly += gap;
-  for (const ln of enLines) {
-    out.push(text(cx, ly, ln, { size: enFs, fill: p.textDim, family: FONT_DISPLAY, weight: 500, anchor: 'middle' }));
-    ly += enLh;
+  const lh = fs * lineFactor;
+  let ly = cy - (lines.length * lh) / 2 + fs * (isArabic ? 0.95 : 0.75);
+  for (const ln of lines) {
+    out.push(text(cx, ly, ln, { size: fs, fill: p.text, family, weight: 500, anchor: 'middle' }));
+    ly += lh;
   }
+
+  // Keep the current time on screen (small, top corner) so the display still tells
+  // the time while the congregation prays.
+  const timeStr = clock.period ? `${clock.time} ${clock.period}` : clock.time;
+  out.push(text(W - clamp(W * 0.03, 22, 60), clamp(H * 0.075, 28, 72), timeStr, { size: clamp(W * 0.018, 16, 34), fill: p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
   return out.join('');
 }
 
@@ -1238,7 +1325,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const hms: [number, number, number] = [Math.floor(remMin / 60), Math.floor(remMin % 60), Math.floor((remMin * 60) % 60)];
   // A live ticking "time until next prayer" counter (H:MM:SS), like the split hero.
   const counter = hms[0] > 0 ? `${hms[0]}:${pad2(hms[1])}:${pad2(hms[2])}` : `${hms[1]}:${pad2(hms[2])}`;
-  const nextLabel = L[m.rows.find((r) => r.next)?.label ?? 'fajr'] ?? '';
+  const nextLabel = rowName(m.rows.find((r) => r.next) ?? m.rows[0], L);
   // "Iqāmah in" while inside the current prayer's Adhan→Iqāmah window, else "Adhan in".
   const eventWord = (m.countdownToIqamah ? (L.iqamah ?? 'Iqamah') : (L.athan ?? 'Adhan')).toUpperCase();
   const pillText = `${nextLabel.toUpperCase()} ${eventWord} IN   ${counter}`;
@@ -1274,7 +1361,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   if (overlay) {
     if (overlay.kind === 'prohibited') out.push(prohibitedView(overlay.secs, p, L, W, H));
     else if (overlay.kind === 'iqamah') out.push(iqamahCountdownView(overlay.secs, overlay.key, p, L, W, H));
-    else out.push(salahHadithView(overlay.item, p, W, H));
+    else out.push(salahHadithView(overlay.item, now, clock, p, W, H));
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
   }
 

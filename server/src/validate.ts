@@ -27,6 +27,7 @@ import type {
   HadithItem,
   ProhibitedNotice,
   IqamahCountdown,
+  TimetableWidget,
 } from './types';
 
 type Obj = Record<string, unknown>;
@@ -169,6 +170,11 @@ function normIqamahCountdown(v: unknown, base?: IqamahCountdown): IqamahCountdow
     minutes: intIn(o.minutes, base?.minutes ?? 5, 1, 30),
   };
 }
+function normWidget(v: unknown, base?: TimetableWidget): TimetableWidget | undefined {
+  if (v === undefined) return base;
+  const o = asObj(v);
+  return { enabled: bool(o.enabled, base?.enabled ?? false) };
+}
 function normTicker(v: unknown, base?: Ticker): Ticker | undefined {
   if (v === undefined) return base;
   const o = asObj(v);
@@ -244,6 +250,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     salahHadith: normSalahHadith(o.salahHadith, base?.salahHadith),
     prohibitedNotice: normProhibited(o.prohibitedNotice, base?.prohibitedNotice),
     iqamahCountdown: normIqamahCountdown(o.iqamahCountdown, base?.iqamahCountdown),
+    widget: normWidget(o.widget, base?.widget),
     footerNote: str(o.footerNote, base?.footerNote ?? '', 160),
     createdAt: base?.createdAt ?? new Date().toISOString(),
   };
