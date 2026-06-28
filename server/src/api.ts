@@ -747,14 +747,15 @@ export function createApi(deps: Deps) {
         res.end(html);
         return;
       }
-      // Embed info for the editor: the widget's LAN url, its public (tunnel) url if
-      // remote access is on, and a ready-to-paste <iframe> snippet.
+      // Embed info for the editor: the verified public (tunnel) URL if remote access
+      // is on. The LAN URL + snippet are built CLIENT-side from window.location.origin
+      // — the server can't know the scheme/port the admin is actually using (e.g. the
+      // HTTPS proxy port), and guessing http:// produced a dead link against that TLS
+      // port (NS_ERROR_NET_EMPTY_RESPONSE).
       const widgetInfoMatch = /^\/api\/timetables\/([\w-]+)\/widget-info$/.exec(pathname);
       if (widgetInfoMatch && method === 'GET') {
         const tt = store.db.timetables.find((t) => t.id === widgetInfoMatch[1]);
         if (!tt) return sendJson(res, 404, { error: 'Timetable not found.' });
-        const host = typeof req.headers.host === 'string' ? req.headers.host : '';
-        const localUrl = host ? `http://${host}/w/${tt.id}` : '';
         // Behind the admin's Cloudflare tunnel, the app's public base already includes
         // its path (e.g. https://masjid.org/display); the widget lives under /w/<id>.
         // But the tunnel may not actually route that path HERE (it can land on another
@@ -766,11 +767,7 @@ export function createApi(deps: Deps) {
           const candidate = `${site!.publicUrl}/w/${tt.id}`;
           if (await widgetPublicWorks(`${candidate}.json`)) publicUrl = candidate;
         }
-        const embed = publicUrl || localUrl;
-        const snippet = embed
-          ? `<iframe src="${embed}" title="Prayer times" loading="lazy" style="border:0;width:100%;max-width:420px;height:480px"></iframe>`
-          : '';
-        return sendJson(res, 200, { enabled: !!tt.widget?.enabled, localUrl, publicUrl, publicConfigured, snippet });
+        return sendJson(res, 200, { enabled: !!tt.widget?.enabled, publicUrl, publicConfigured });
       }
       const prevMatch = /^\/api\/preview\/([\w-]+)$/.exec(pathname);
       if (prevMatch && method === 'GET') {

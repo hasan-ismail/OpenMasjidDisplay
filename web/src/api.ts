@@ -105,9 +105,11 @@ export const api = {
   /** Printable month of computed prayer times (browser "Save as PDF"). */
   timetablePrintUrl: (id: string) => `/api/timetables/${id}/print`,
 
-  /** Embed info for the public web widget (LAN + verified public-tunnel URL + iframe snippet). */
+  /** Embed info for the public web widget: the VERIFIED public-tunnel URL (or '') and
+   *  whether remote access is configured. The LAN URL + snippet are built client-side
+   *  from window.location.origin (correct scheme/port). */
   widgetInfo: (id: string) =>
-    req<{ enabled: boolean; localUrl: string; publicUrl: string; publicConfigured: boolean; snippet: string }>('GET', `/api/timetables/${id}/widget-info`),
+    req<{ enabled: boolean; publicUrl: string; publicConfigured: boolean }>('GET', `/api/timetables/${id}/widget-info`),
 
   createSource: (b: Partial<Source>) => req<Source>('POST', '/api/sources', b),
   updateSource: (id: string, b: Partial<Source>) => req<Source>('PUT', `/api/sources/${id}`, b),

@@ -786,7 +786,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
 /** The website-widget embed code + preview for a saved timetable. */
 function WidgetEmbed({ id }: { id: string }) {
   const toast = useToast();
-  const [info, setInfo] = useState<{ enabled: boolean; localUrl: string; publicUrl: string; publicConfigured: boolean; snippet: string } | null>(null);
+  const [info, setInfo] = useState<{ enabled: boolean; publicUrl: string; publicConfigured: boolean } | null>(null);
   const [err, setErr] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -795,7 +795,11 @@ function WidgetEmbed({ id }: { id: string }) {
   }, [id]);
   if (err) return <p className="hint">Couldn't load the embed code.</p>;
   if (!info) return <p className="hint"><Spinner /> Preparing embed code…</p>;
-  const url = info.publicUrl || info.localUrl;
+  // Build the LAN link from the page's OWN origin so it uses the exact scheme + port
+  // the admin is using right now (e.g. the HTTPS proxy port) — never a guessed http://.
+  const localUrl = `${window.location.origin}/w/${id}`;
+  const url = info.publicUrl || localUrl;
+  const snippet = `<iframe src="${url}" title="Prayer times" loading="lazy" style="border:0;width:100%;max-width:420px;height:480px"></iframe>`;
   const copy = async (text: string, what: string) => {
     try { await copyText(text); toast(`${what} copied.`); }
     catch { toast('Could not copy. Select the text and copy manually.', 'error'); }
@@ -806,10 +810,10 @@ function WidgetEmbed({ id }: { id: string }) {
         Paste this into your website to show a live, auto-updating prayer-times box. Save the timetable after turning this on.
       </p>
       <Field label="Embed code">
-        <textarea className="input" rows={3} readOnly value={info.snippet} onFocus={(e) => e.currentTarget.select()} style={{ fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }} />
+        <textarea className="input" rows={3} readOnly value={snippet} onFocus={(e) => e.currentTarget.select()} style={{ fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }} />
       </Field>
       <div className="row" style={{ gap: '0.5rem', marginBlockStart: '0.5rem', flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={() => copy(info.snippet, 'Embed code')}><IconCopy size={14} /> Copy embed code</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={() => copy(snippet, 'Embed code')}><IconCopy size={14} /> Copy embed code</button>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => copy(url, 'Link')}><IconCopy size={14} /> Copy link</button>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => window.open(url, '_blank', 'noopener')}><IconExpand size={14} /> Preview</button>
       </div>
