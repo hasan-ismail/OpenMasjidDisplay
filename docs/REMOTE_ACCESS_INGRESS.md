@@ -39,6 +39,13 @@ curl https://omos.<domain>/<basePath>/w/<id>.json   →  your widget JSON
 (`<basePath>` = what `/api/fabric/site` returns. If it 404s, confirm the path in
 **OpenMasjidOS → Settings → Remote access** matches what you're requesting.)
 
+## Getting a 502 from `omos.<domain>`?
+
+The single Cloudflare route's **Service Type must be HTTP** (URL `localhost:<OS port>`, default 80) —
+that port is the OS's plain-HTTP front door. Choosing **HTTPS** makes cloudflared attempt TLS against a
+non-TLS port → **502**, and then every app's "is my path routing?" probe fails (you'll see "OS isn't
+routing this app's path"). Set Type **HTTP**; "No TLS Verify" is not needed.
+
 ## To pick it up
 
 Admin: update OpenMasjidOS to **v0.37.0**, then **Settings → Remote access** shows the single route to
