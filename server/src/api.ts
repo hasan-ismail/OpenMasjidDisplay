@@ -51,6 +51,31 @@ import type { DB } from './types';
 
 const log = makeLog('api');
 
+// Marker embedded in the widget JSON so we can confirm a candidate PUBLIC (tunnel)
+// URL actually reaches THIS app before we hand it to the admin as the embed link.
+const WIDGET_APP_MARKER = 'openmasjid-display';
+
+/**
+ * Does `jsonUrl` actually serve OUR widget feed? Used to verify that the platform's
+ * Cloudflare tunnel really routes the app's public path here before we advertise it
+ * as the embed URL — otherwise that URL can land on a DIFFERENT app (path-based
+ * ingress isn't guaranteed; see docs/PLATFORM_WIDGET_PATH_INGRESS.md). Fails closed.
+ */
+async function widgetPublicWorks(jsonUrl: string): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4500);
+    const res = await fetch(jsonUrl, { signal: ctrl.signal, headers: { accept: 'application/json' } });
+    clearTimeout(t);
+    if (!res.ok) return false;
+    if (!(res.headers.get('content-type') ?? '').includes('application/json')) return false;
+    const j = (await res.json().catch(() => null)) as { app?: unknown } | null;
+    return !!j && j.app === WIDGET_APP_MARKER;
+  } catch {
+    return false;
+  }
+}
+
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -204,12 +229,14 @@ export function createApi(deps: Deps) {
         const data = widgetData(tt, new Date());
         if (widgetMatch[2]) {
           // JSON feed — CORS-open so a masjid can also build their own UI from it.
+          // The `app` marker lets the editor verify a public (tunnel) URL actually
+          // reaches THIS app before advertising it (see /widget-info).
           res.writeHead(200, {
             'content-type': 'application/json; charset=utf-8',
             'cache-control': 'no-store',
             'access-control-allow-origin': '*',
           });
-          res.end(JSON.stringify(data));
+          res.end(JSON.stringify({ app: WIDGET_APP_MARKER, ...data }));
           return;
         }
         const html = renderWidgetHtml(data, `${pathname}.json`);
@@ -730,13 +757,20 @@ export function createApi(deps: Deps) {
         const localUrl = host ? `http://${host}/w/${tt.id}` : '';
         // Behind the admin's Cloudflare tunnel, the app's public base already includes
         // its path (e.g. https://masjid.org/display); the widget lives under /w/<id>.
+        // But the tunnel may not actually route that path HERE (it can land on another
+        // app), so only advertise the public URL once we've VERIFIED it reaches us.
         const site = await siteInfo();
-        const publicUrl = site?.enabled && site.publicUrl ? `${site.publicUrl}/w/${tt.id}` : '';
+        const publicConfigured = !!site?.enabled && !!site.publicUrl;
+        let publicUrl = '';
+        if (publicConfigured && tt.widget?.enabled) {
+          const candidate = `${site!.publicUrl}/w/${tt.id}`;
+          if (await widgetPublicWorks(`${candidate}.json`)) publicUrl = candidate;
+        }
         const embed = publicUrl || localUrl;
         const snippet = embed
           ? `<iframe src="${embed}" title="Prayer times" loading="lazy" style="border:0;width:100%;max-width:420px;height:480px"></iframe>`
           : '';
-        return sendJson(res, 200, { enabled: !!tt.widget?.enabled, localUrl, publicUrl, snippet });
+        return sendJson(res, 200, { enabled: !!tt.widget?.enabled, localUrl, publicUrl, publicConfigured, snippet });
       }
       const prevMatch = /^\/api\/preview\/([\w-]+)$/.exec(pathname);
       if (prevMatch && method === 'GET') {

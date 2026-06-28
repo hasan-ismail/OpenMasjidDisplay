@@ -786,7 +786,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
 /** The website-widget embed code + preview for a saved timetable. */
 function WidgetEmbed({ id }: { id: string }) {
   const toast = useToast();
-  const [info, setInfo] = useState<{ enabled: boolean; localUrl: string; publicUrl: string; snippet: string } | null>(null);
+  const [info, setInfo] = useState<{ enabled: boolean; localUrl: string; publicUrl: string; publicConfigured: boolean; snippet: string } | null>(null);
   const [err, setErr] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -816,7 +816,9 @@ function WidgetEmbed({ id }: { id: string }) {
       <p className="hint" style={{ marginBlockStart: '0.5rem' }}>
         {info.publicUrl
           ? 'Public link — works anywhere (via your OpenMasjidOS remote access).'
-          : 'Local-network link. Turn on remote access (Cloudflare) in OpenMasjidOS to get a public link that works on the open internet.'}
+          : info.publicConfigured
+            ? 'This is a local-network link. Remote access is on, but OpenMasjidOS isn’t routing this app’s public path to it yet (it lands on another app), so a public link isn’t available — ask your OpenMasjidOS admin to enable per-app path routing.'
+            : 'This is a local-network link. Turn on remote access (Cloudflare) in OpenMasjidOS to get a public link that works on the open internet.'}
       </p>
     </div>
   );
