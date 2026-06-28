@@ -3,6 +3,18 @@
 
 # Platform request: route each app's public path through the Cloudflare tunnel
 
+> ## ✅ RESOLVED in OpenMasjidOS v0.37.0
+> The platform now reverse-proxies `/<basePath>/*` from its HTTP front door to each
+> app's `ports[0]`, **keeping the full path** (`system/ingress.ts`). That's option (1)
+> below. **Display needs no change** — its widget route already matches the kept-prefix
+> form (`/<appId>/w/:id`), the LAN form (`/w/:id`), and an admin-renamed basePath, and
+> the editor builds the embed link from the Fabric `publicUrl` (so a renamed path just
+> works). See **`REMOTE_ACCESS_INGRESS.md`** (the platform's answer) for the live chain
+> and the one-Cloudflare-route setup. The rest of this file is kept as the original
+> request, for history.
+
+---
+
 **Audience:** maintainers/agents of the **OpenMasjidOS** repo (and anyone wiring the
 Cloudflare tunnel). **This is NOT a change to OpenMasjidOS that the Display app made —
 it's a request.** Nothing in the platform repo was edited; this doc describes the gap
