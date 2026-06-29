@@ -420,6 +420,9 @@ interface Model {
    *  isn't highlighted until this one is over. */
   countdownToIqamah: boolean;
   isFriday: boolean;
+  /** configured Jumu'ah time(s), decimal hours, sorted — shown as a separate strip
+   *  on every day (NOT part of the daily prayer rows). */
+  jumuah: number[];
 }
 
 function buildModel(tt: Timetable, now: Date): Model {
@@ -437,12 +440,12 @@ function buildModel(tt: Timetable, now: Date): Model {
 
   const nowHours = parts.hour + parts.minute / 60 + parts.second / 3600;
   const isFriday = dayOfWeek(now, tz) === 5;
-  const jFriday = isFriday ? tt.jumuah.map(parseHHMM).filter((x): x is number => x != null) : [];
+  // Jumu'ah times are shown as a SEPARATE strip on EVERY day; they don't replace
+  // Dhuhr in the daily table and don't drive the active/next countdown (which always
+  // tracks the five daily prayers, Dhuhr included).
+  const jumuah = tt.jumuah.map(parseHHMM).filter((x): x is number => x != null).sort((a, b) => a - b);
   const order = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
-  // On Friday the Dhuhr slot is Jumu'ah, so "active"/"next prayer" + the countdown
-  // should track the Jumu'ah time rather than astronomical Dhuhr.
   const eff: Record<string, number> = { ...(times as unknown as Record<string, number>) };
-  if (isFriday && jFriday[0] != null) eff.dhuhr = jFriday[0];
   let activeKey: string | null = null;
   let nextKey: string | null = null;
   let nextHours = 0;
@@ -473,21 +476,7 @@ function buildModel(tt: Timetable, now: Date): Model {
   const rows: Row[] = [];
   rows.push({ key: 'fajr', label: 'fajr', adhan: times.fajr, iqamah: iq('fajr', times.fajr) });
   if (tt.showSunrise) rows.push({ key: 'sunrise', label: 'sunrise', adhan: times.sunrise, iqamah: null, minor: true });
-  if (isFriday) {
-    const j = jFriday;
-    const jIq = yearRow?.jumuah ? parseHHMM(yearRow.jumuah) : null;
-    if (j.length >= 2) {
-      // Multiple Jumu'ah times → one row each ("Jumu'ah 1", "Jumu'ah 2", …), each a
-      // single time. (Previously two times were shown as one Jumu'ah's Adhan/Iqamah.)
-      j.forEach((t, i) =>
-        rows.push({ key: i === 0 ? 'dhuhr' : `jumuah${i + 1}`, label: 'jumuah', jumuahNum: i + 1, adhan: t, iqamah: null }),
-      );
-    } else {
-      rows.push({ key: 'dhuhr', label: 'jumuah', adhan: j[0] ?? times.dhuhr, iqamah: jIq ?? null });
-    }
-  } else {
-    rows.push({ key: 'dhuhr', label: 'dhuhr', adhan: times.dhuhr, iqamah: iq('dhuhr', times.dhuhr) });
-  }
+  rows.push({ key: 'dhuhr', label: 'dhuhr', adhan: times.dhuhr, iqamah: iq('dhuhr', times.dhuhr) });
   rows.push({ key: 'asr', label: 'asr', adhan: times.asr, iqamah: iq('asr', times.asr) });
   rows.push({ key: 'maghrib', label: 'maghrib', adhan: times.maghrib, iqamah: iq('maghrib', times.maghrib) });
   rows.push({ key: 'isha', label: 'isha', adhan: times.isha, iqamah: iq('isha', times.isha) });
@@ -509,7 +498,7 @@ function buildModel(tt: Timetable, now: Date): Model {
     if (r.key === activeKey) r.active = true;
     if (r.key === nextKey) r.next = true;
   }
-  return { parts, times, rows, activeKey, nextKey, nextHours, countdownToIqamah, isFriday };
+  return { parts, times, rows, activeKey, nextKey, nextHours, countdownToIqamah, isFriday, jumuah };
 }
 
 /** One prayer line for the public web widget. */
@@ -548,16 +537,27 @@ export function widgetData(tt: Timetable, now: Date): WidgetData {
     timeFormat: tt.timeFormat,
     language: lang,
     rtl: lang === 'ar' || lang === 'ur',
-    rows: m.rows
-      .filter((r) => !r.minor) // drop Sunrise — widget shows the 5 prayers + Jumu'ah only
-      .map((r) => ({
-        key: r.key,
-        label: rowName(r, L),
-        adhan: r.adhan != null ? fmtShort(r.adhan, tt.timeFormat) : null,
-        iqamah: r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : null,
-        active: !!r.active,
-        next: !!r.next,
+    rows: [
+      ...m.rows
+        .filter((r) => !r.minor) // drop Sunrise — widget shows the 5 prayers + Jumu'ah
+        .map((r) => ({
+          key: r.key,
+          label: rowName(r, L),
+          adhan: r.adhan != null ? fmtShort(r.adhan, tt.timeFormat) : null,
+          iqamah: r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : null,
+          active: !!r.active,
+          next: !!r.next,
+        })),
+      // Jumu'ah as separate entries (every day), numbered when there's more than one.
+      ...m.jumuah.map((t, i) => ({
+        key: `jumuah${i + 1}`,
+        label: (L.jumuah ?? "Jumu'ah") + (m.jumuah.length > 1 ? ` ${i + 1}` : ''),
+        adhan: null,
+        iqamah: fmtShort(t, tt.timeFormat),
+        active: false,
+        next: false,
       })),
+    ],
   };
 }
 
@@ -732,6 +732,31 @@ function lightBeams(cel: Celestial, W: number, H: number): string {
     );
   }
   out.push(`</g>`);
+  return out.join('');
+}
+
+/** A separate Jumu'ah strip, shown on EVERY day (the daily table keeps its own Dhuhr
+ *  row). Gold "JUMU'AH" label on the leading side, then the configured time(s) —
+ *  numbered ¹ ² when there's more than one Jumu'ah. */
+function jumuahStrip(times: number[], p: Palette, L: Record<string, string>, x: number, y: number, w: number, h: number, timeFormat: string): string {
+  if (!times.length) return '';
+  const out: string[] = [];
+  const r = Math.min(w, h) * 0.16;
+  out.push(glass(x, y, w, h, r, { fill: hexToRgba(p.gold, 0.05), stroke: hexToRgba(p.gold, 0.45) }));
+  const pad = h * 0.6;
+  const cy = y + h * 0.64;
+  const label = (L.jumuah ?? "Jumu'ah").toUpperCase();
+  out.push(text(x + pad, cy, label, { size: clamp(h * 0.4, 14, 40), fill: p.gold, family: FONT_DISPLAY, weight: 700, anchor: 'start', letter: 1, editId: 'label.jumuah' }));
+  const sup = ['¹', '²', '³', '⁴'];
+  const timeSize = clamp(h * 0.46, 16, 48);
+  const zoneX = x + w * 0.42;
+  const zoneW = x + w - pad - zoneX;
+  const n = times.length;
+  times.forEach((t, i) => {
+    const str = (n > 1 ? `${sup[i] ?? i + 1} ` : '') + fmtShort(t, timeFormat);
+    const tx = zoneX + (zoneW / n) * (i + 0.5);
+    out.push(text(tx, cy, str, { size: timeSize, fill: p.text, family: FONT_DISPLAY, weight: 700, anchor: 'middle' }));
+  });
   return out.join('');
 }
 
@@ -935,11 +960,11 @@ function splitLeftPanel(
 /** The MasjidBox-style split: a dense prayer list on the left, big countdown right. */
 function splitView(
   tt: Timetable, m: Model, clock: ClockText, hms: [number, number, number], greg: string, hij: string,
-  p: Palette, L: Record<string, string>, W: number, H: number, P: number, logo: string | null,
+  p: Palette, L: Record<string, string>, W: number, H: number, P: number, logo: string | null, bottomInset = 0,
 ): string {
   const gap = Math.min(W, H) * 0.014;
   const top = P;
-  const bottom = H - P - H * 0.05;
+  const bottom = H - P - H * 0.05 - bottomInset;
   const leftW = (W - 2 * P - gap * 1.6) * 0.44;
   const leftH = bottom - top;
   const heroX = P + leftW + gap * 1.6;
@@ -954,12 +979,12 @@ function splitView(
  *  image fills the right (shown sharp). */
 function announcementView(
   tt: Timetable, m: Model, clock: ClockText, greg: string, hij: string, p: Palette, L: Record<string, string>,
-  W: number, H: number, P: number, logo: string | null, image: string,
+  W: number, H: number, P: number, logo: string | null, image: string, bottomInset = 0,
 ): string {
   const out: string[] = [];
   const gap = Math.min(W, H) * 0.02;
   const top = P;
-  const bottom = H - P - H * 0.05;
+  const bottom = H - P - H * 0.05 - bottomInset;
   const leftH = bottom - top;
   const leftW = clamp((W - 2 * P) * 0.33, 220, 540);
   out.push(splitLeftPanel(tt, m, clock, greg, hij, p, L, P, top, leftW, leftH, logo));
@@ -993,7 +1018,7 @@ function announcementView(
 function spotlightView(
   tt: Timetable, m: Model, clock: ClockText, hms: [number, number, number], greg: string, hij: string,
   p: Palette, L: Record<string, string>, W: number, H: number, P: number, logo: string | null,
-  nowHours: number, portrait: boolean,
+  nowHours: number, portrait: boolean, bottomInset = 0,
 ): string {
   const out: string[] = [];
   const gap = Math.min(W, H) * 0.018;
@@ -1023,7 +1048,7 @@ function spotlightView(
   // ── Hero card between the bar and the bottom ribbon ──
   const footerH = H * 0.05;
   const ribbonH = H * (portrait ? 0.34 : 0.22);
-  const ribbonY = H - P - footerH - ribbonH;
+  const ribbonY = H - P - footerH - ribbonH - bottomInset;
   const heroTop = barY + barH + gap;
   const heroH = ribbonY - gap - heroTop;
   const heroX = P;
@@ -1382,14 +1407,18 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
   }
 
+  // Reserve a band at the bottom for the always-on Jumu'ah strip (separate from the
+  // daily prayer table). Zero when no Jumu'ah times are configured.
+  const jH = m.jumuah.length ? clamp(H * 0.075, 46, 120) : 0;
+
   if (opts.announcement) {
     // Slideshow: timetable becomes a left sidebar, the image fills the right.
-    out.push(announcementView(tt, m, clock, greg, hij, p, L, W, H, P, logo, opts.announcement));
+    out.push(announcementView(tt, m, clock, greg, hij, p, L, W, H, P, logo, opts.announcement, jH));
   } else if (layout === 'split') {
-    out.push(splitView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo));
+    out.push(splitView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo, jH));
   } else if (layout === 'clockTop') {
     // "Spotlight": its own top bar + next-prayer hero + bottom ribbon.
-    out.push(spotlightView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo, nowHours, portrait));
+    out.push(spotlightView(tt, m, clock, hms, greg, hij, p, L, W, H, P, logo, nowHours, portrait, jH));
   } else {
     // ── Centered: masthead + big central clock + prayer grid ──
     const mastH = H * (portrait ? 0.11 : 0.15);
@@ -1417,7 +1446,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
     const footerH = H * 0.05;
     const bodyTop = mastY + mastH * (portrait && tt.showDates ? 1.55 : 1.15);
-    const bodyBottom = H - P - footerH;
+    const bodyBottom = H - P - footerH - jH;
     const gap = Math.min(W, H) * 0.014;
 
     const gridH = (bodyBottom - bodyTop) * (portrait ? 0.5 : 0.42);
@@ -1425,6 +1454,13 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     const clockSize = clamp(Math.min(W * (portrait ? 0.2 : 0.15), (gridY - bodyTop) * 0.5), 60, 240);
     out.push(clockGroup(W / 2, (bodyTop + gridY) / 2 - clockSize * 0.1, clockSize, clock, tt.showCountdown, pillText, p));
     out.push(prayerGrid(m.rows, P, gridY, W - 2 * P, gridH, portrait ? 2 : m.rows.length, p, L, tt.timeFormat, gap));
+  }
+
+  // ── Jumu'ah strip (every day, separate from the daily table) ────────────────
+  if (jH > 0) {
+    const g = Math.min(W, H) * 0.014;
+    const stripY = H - P - H * 0.05 - jH + g * 0.5;
+    out.push(jumuahStrip(m.jumuah, p, L, P, stripY, W - 2 * P, jH - g, tt.timeFormat));
   }
 
   // ── Footer (hidden when the ticker is running — they share the bottom strip) ──
