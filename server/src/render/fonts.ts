@@ -27,11 +27,10 @@ const DIRS = ['/usr/share/fonts', '/usr/local/share/fonts'];
 const PRIORITY = [
   'NotoSans-Regular',
   'NotoSans-Bold',
-  'NotoNaskhArabic-Regular',
-  'NotoSansArabic-Regular',
+  'NotoNaskhArabic-Regular', // one Arabic face is enough (Naskh, our FONT_ARABIC primary)
   'DejaVuSans',
 ];
-const MAX_FONTS = 6;
+const MAX_FONTS = 5;
 
 export interface ResvgFontOptions {
   fontFiles?: string[];
