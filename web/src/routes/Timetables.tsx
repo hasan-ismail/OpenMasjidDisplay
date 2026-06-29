@@ -373,8 +373,8 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           </div>
 
           <div className="grid2">
-            <Field label="Latitude" hint="e.g. 40.7128"><input className="input" inputMode="decimal" value={f.latitude} onChange={(e) => set('latitude', e.target.value)} /></Field>
-            <Field label="Longitude" hint="e.g. -74.0060"><input className="input" inputMode="decimal" value={f.longitude} onChange={(e) => set('longitude', e.target.value)} /></Field>
+            <Field label="Latitude" hint="e.g. 40.748222"><input className="input" inputMode="decimal" value={f.latitude} onChange={(e) => set('latitude', e.target.value)} /></Field>
+            <Field label="Longitude" hint="e.g. -73.891075"><input className="input" inputMode="decimal" value={f.longitude} onChange={(e) => set('longitude', e.target.value)} /></Field>
           </div>
           <p className="hint" style={{ marginBlockStart: '-0.5rem', marginBlockEnd: '0.6rem' }}>
             Don't know yours?{' '}
