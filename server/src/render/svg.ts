@@ -1075,6 +1075,23 @@ function spotlightView(
 }
 
 /** "Setup needed" frame when no location is configured. */
+/** Clean text copied from the web for on-screen rendering: drop invisible bidi /
+ *  zero-width control marks (the source hadith was full of U+200F RLM), and fold
+ *  "smart" punctuation to plain forms. The bundled Arabic face (Noto Naskh Arabic)
+ *  has no glyph for curly quotes/dashes, so an embedded “ ” — etc. rendered as a
+ *  single .notdef tofu box mid-text; plain " ' - render (or fall back) cleanly. */
+function sanitizeText(s: string): string {
+  return s
+    .normalize('NFC')
+    .replace(/[​-‏‪-‮⁦-⁩؜﻿]/g, '') // bidi/zero-width controls
+    .replace(/[“”„‟«»]/g, '"') // smart/guillemet double quotes
+    .replace(/[‘’‚‛]/g, "'") // smart single quotes
+    .replace(/[–—―]/g, '-') // en/em/horizontal-bar dashes
+    .replace(/…/g, '...') // ellipsis
+    .replace(/[ \t]{2,}/g, ' ') // collapse runs of spaces left by stripped marks
+    .trim();
+}
+
 /** Greedy word-wrap: break `s` into lines that each fit within `maxW` at `size`. */
 function wrapLines(s: string, size: number, maxW: number, maxLines = 6): string[] {
   const words = s.split(/\s+/).filter(Boolean);
@@ -1163,8 +1180,8 @@ function salahHadithView(item: HadithItem, now: Date, clock: ClockText, p: Palet
   const cy = H / 2;
   out.push(glass(cx - cardW / 2, cy - cardH / 2, cardW, cardH, Math.min(cardW, cardH) * 0.05, { glow: p.primary }));
 
-  const ar = item.ar.trim();
-  const en = item.en.trim();
+  const ar = sanitizeText(item.ar);
+  const en = sanitizeText(item.en);
   // ONE language at a time: Arabic for 10s, then English for 10s, alternating. If only
   // one is provided, always show it.
   const both = !!ar && !!en;
