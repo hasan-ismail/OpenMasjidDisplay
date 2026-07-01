@@ -31,7 +31,12 @@ const DIRS = ['/app/fonts', '/usr/share/fonts', '/usr/local/share/fonts'];
 const PRIORITY = [
   'NotoSans-Regular',
   'NotoSans-Bold',
-  'NotoNaskhArabic-Regular', // one Arabic face is enough (Naskh, our FONT_ARABIC primary)
+  // The Arabic face. Amiri is a traditional Naskh (vendored, OFL) with FULL Latin
+  // punctuation AND the ﷺ ligature, so mixed Arabic+punctuation text (hadith, notes)
+  // renders in ONE font with no tofu — resvg picks a single font per run and does NOT
+  // per-glyph fall back, so an Arabic-only face left "( ) tofu boxes in the text.
+  'Amiri-Regular',
+  'NotoNaskhArabic-Regular', // kept as a secondary Arabic fallback
   'DejaVuSans',
 ];
 const MAX_FONTS = 5;
@@ -85,7 +90,7 @@ export function fontOptions(): ResvgFontOptions {
   // loop above misses them and Arabic renders as tofu boxes. If no Arabic face got
   // picked, grab one by substring (Naskh preferred — it's the traditional Qur'anic
   // hand — then Sans Arabic), so hadith/labels in Arabic actually shape.
-  const haveArabic = chosen.some((f) => /arabic/i.test(path.basename(f)));
+  const haveArabic = chosen.some((f) => /arabic|amiri/i.test(path.basename(f)));
   if (!haveArabic && chosen.length < MAX_FONTS) {
     const ar =
       all.find((f) => /NotoNaskhArabic/i.test(path.basename(f))) ??

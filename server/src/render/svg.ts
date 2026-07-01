@@ -45,7 +45,11 @@ const FONT_SANS = 'Noto Sans, Noto Sans Arabic, DejaVu Sans, sans-serif';
 // Arabic-first stack: name the Arabic faces FIRST so resvg shapes Arabic with them
 // directly (it doesn't always fall back from a Latin-only face). Naskh is the
 // traditional hand; Sans Arabic is the modern fallback. Used for Arabic hadith text.
-const FONT_ARABIC = 'Noto Naskh Arabic, Noto Sans Arabic, Noto Sans, DejaVu Sans, sans-serif';
+const FONT_ARABIC = 'Amiri, Noto Naskh Arabic, Noto Sans Arabic, Noto Sans, DejaVu Sans, sans-serif';
+
+// Warning red for the prohibited-time scrolling message (shared by the SVG band and the
+// ffmpeg drawtext so the preview and the live video match).
+export const TICKER_RED = '#f2453d';
 
 // Glass surfaces are white-translucent regardless of theme, so the scene (or the
 // masjid's photo) shows through them — that is what reads as "glass".
@@ -271,11 +275,28 @@ function activeTickerText(tt: Timetable, parts: ReturnType<typeof localParts>): 
 
 /** The active ticker string for the given instant (used by the renderer to drive the
  *  smooth ffmpeg-side scroll). */
+/** The bottom-ticker content for this instant: the normal scrolling ticker, OR a red
+ *  prohibited-time message that OVERRIDES it (when the notice is in "ticker" mode), OR
+ *  nothing while a full-screen overlay shows. `prohibited` drives the red colour in both
+ *  the SVG band and the ffmpeg drawtext. */
+export function activeTicker(tt: Timetable, now: Date): { text: string; prohibited: boolean } {
+  if (tt.latitude == null || tt.longitude == null) return { text: '', prohibited: false };
+  const m = buildModel(tt, now);
+  const nowHours = m.parts.hour + m.parts.minute / 60 + m.parts.second / 3600;
+  // A full-screen overlay (pre-Iqāmah countdown, during-salah hadith, or a full-screen
+  // prohibited notice) takes over the whole screen — hide the scrolling ticker.
+  if (activeOverlay(tt, m, nowHours, now)) return { text: '', prohibited: false };
+  // Ticker-mode prohibited window → a red message that overrides any normal ticker,
+  // for the whole window (it clears itself when prayer is allowed again).
+  if (tt.prohibitedNotice?.ticker && prohibitedWindow(tt, m, nowHours)) {
+    return { text: prohibitedMessage(tt, m), prohibited: true };
+  }
+  return { text: activeTickerText(tt, m.parts), prohibited: false };
+}
+
+/** The active ticker string for the given instant (text only). */
 export function activeTickerString(tt: Timetable, now: Date): string {
-  // A full-screen overlay (zawāl notice, pre-Iqāmah countdown, during-salah hadith)
-  // takes over the whole screen — hide the scrolling ticker while it shows.
-  if (overlayActiveNow(tt, now)) return '';
-  return activeTickerText(tt, localParts(now, tt.timezone || undefined));
+  return activeTicker(tt, now).text;
 }
 
 /** Whether the timetable currently has a scrolling ticker. */
@@ -772,7 +793,8 @@ interface Ctx {
   nextLabel: string;
   nextArabic: string;
   eventWord: string;
-  remainingMin: number;
+  /** whole seconds until the next event (Adhan/Iqāmah) — drives the H/M/S countdown */
+  remainingSec: number;
   ringProgress: number;
   showLogo: boolean;
   showName: boolean;
@@ -816,30 +838,33 @@ function panelHeader(b: Box, c: Ctx): string {
 
 /** Clock panel: big right-aligned time (small seconds + AM/PM stacked beside it),
  *  then the Gregorian date and the Hijri date. */
-function panelClock(b: Box, c: Ctx): string {
+function panelClock(b: Box, c: Ctx, align: 'start' | 'end' = 'end'): string {
   const out: string[] = [];
   out.push(glass(b.x, b.y, b.w, b.h, clamp(Math.min(b.w, b.h) * 0.12, 10, 30), { raised: true }));
   const pad = b.w * 0.07;
-  const right = b.x + b.w - pad;
+  const edge = align === 'end' ? b.x + b.w - pad : b.x + pad;
   const showDates = c.showDates && (!!c.greg || !!c.hij);
   let ts = clamp(b.h * (showDates ? 0.42 : 0.6), 28, 150);
-  const ss = ts * 0.3; // small marker (seconds / period)
-  const markW = approxWidth(c.showSeconds ? c.secStr : (c.clock.period || 'MM'), ss);
-  const need = approxWidth(c.clock.time, ts) + (c.clock.period || c.showSeconds ? ts * 0.1 + markW : 0);
   const avail = b.w - 2 * pad;
-  if (need > avail) { const k = avail / need; ts *= k; }
-  const ss2 = ts * 0.3;
-  const mW = c.clock.period || c.showSeconds ? approxWidth(c.showSeconds ? c.secStr : c.clock.period, ss2) : 0;
-  const gap = c.clock.period || c.showSeconds ? ts * 0.1 : 0;
+  const markStr = c.showSeconds ? c.secStr : c.clock.period || '';
+  const fit = () => approxWidth(c.clock.time, ts) + (markStr ? ts * 0.1 + approxWidth(markStr, ts * 0.3) : 0);
+  if (fit() > avail) ts *= avail / fit();
+  const ss = ts * 0.3;
+  const mW = markStr ? approxWidth(markStr, ss) : 0;
+  const gap = markStr ? ts * 0.1 : 0;
+  const timeW = approxWidth(c.clock.time, ts);
   const tBase = b.y + b.h * (showDates ? 0.4 : 0.62);
-  out.push(text(right - mW - gap, tBase, c.clock.time, { size: ts, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'end', letter: -ts * 0.01, blink: true }));
-  // Small stacked marker: seconds on top, AM/PM below (matches the reference).
-  if (c.showSeconds) out.push(text(right, tBase - ts * 0.44, c.secStr, { size: ss2, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'end' }));
-  if (c.clock.period) out.push(text(right, tBase - (c.showSeconds ? 0 : ts * 0.02), c.clock.period, { size: ss2, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'end' }));
+  // Time, then the small stacked seconds/AM-PM marker on its trailing side; the whole
+  // block hugs the panel's leading or trailing edge per `align`.
+  const timeX = align === 'end' ? edge - mW - gap : edge;
+  const markX = align === 'end' ? edge : edge + timeW + gap;
+  out.push(text(timeX, tBase, c.clock.time, { size: ts, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: align, letter: -ts * 0.01, blink: true }));
+  if (c.showSeconds) out.push(text(markX, tBase - ts * 0.44, c.secStr, { size: ss, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: align }));
+  if (c.clock.period) out.push(text(markX, tBase - (c.showSeconds ? 0 : ts * 0.02), c.clock.period, { size: ss, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: align }));
   if (showDates) {
     const ds = clamp(b.h * 0.1, 11, 24);
-    if (c.greg) out.push(text(right, b.y + b.h * 0.66, c.greg, { size: ds, fill: c.p.textDim, family: FONT_DISPLAY, anchor: 'end' }));
-    if (c.hij) out.push(text(right, b.y + b.h * 0.84, c.hij, { size: ds * 0.98, fill: c.p.goldSoft, family: FONT_DISPLAY, anchor: 'end' }));
+    if (c.greg) out.push(text(edge, b.y + b.h * 0.66, c.greg, { size: ds, fill: c.p.textDim, family: FONT_DISPLAY, anchor: align }));
+    if (c.hij) out.push(text(edge, b.y + b.h * 0.84, c.hij, { size: ds * 0.98, fill: c.p.goldSoft, family: FONT_DISPLAY, anchor: align }));
   }
   return out.join('');
 }
@@ -852,9 +877,9 @@ function panelRing(b: Box, c: Ctx): string {
   const cx = b.x + b.w / 2;
   const eye = clamp(b.h * 0.05, 11, 26);
   out.push(text(cx, b.y + b.h * 0.13, (c.L.next ?? 'Next prayer').toUpperCase(), { size: eye, fill: c.p.textDim, weight: 700, anchor: 'middle', letter: 4 }));
-  // Ring
-  const ringCy = b.y + b.h * 0.44;
-  const R = Math.min(b.w * 0.32, b.h * 0.26);
+  // Ring — kept in the upper part of the card so the countdown below never touches it.
+  const ringCy = b.y + b.h * 0.4;
+  const R = Math.min(b.w * 0.3, b.h * 0.23);
   const sw = Math.max(6, R * 0.13);
   const C = 2 * Math.PI * R;
   const cxs = cx.toFixed(1), cys = ringCy.toFixed(1), rs = R.toFixed(1), sws = sw.toFixed(1);
@@ -862,21 +887,31 @@ function panelRing(b: Box, c: Ctx): string {
   const off = C * (1 - clamp(c.ringProgress, 0.001, 1));
   out.push(`<circle cx="${cxs}" cy="${cys}" r="${rs}" fill="none" stroke="${c.p.primary}" stroke-width="${sws}" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${cxs} ${cys})"/>`);
   // Center: Arabic name (gold) over English (dim, letter-spaced).
-  if (c.nextArabic) out.push(text(cx, ringCy + R * 0.06, c.nextArabic, { size: clamp(R * 0.5, 18, 64), fill: c.p.gold, family: FONT_ARABIC, weight: 700, anchor: 'middle' }));
-  out.push(text(cx, ringCy + R * (c.nextArabic ? 0.42 : 0.1), c.nextLabel.toUpperCase(), { size: clamp(R * 0.24, 12, 34), fill: c.p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: 3 }));
-  // Below: big minutes-until + unit + "UNTIL ADHAN/IQAMAH".
+  if (c.nextArabic) out.push(text(cx, ringCy + R * 0.04, c.nextArabic, { size: clamp(R * 0.48, 18, 60), fill: c.p.gold, family: FONT_ARABIC, weight: 700, anchor: 'middle' }));
+  out.push(text(cx, ringCy + R * (c.nextArabic ? 0.4 : 0.08), c.nextLabel.toUpperCase(), { size: clamp(R * 0.22, 12, 32), fill: c.p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: 3 }));
+  // Below the ring: the countdown as big number(s) + small unit word(s). Under a minute
+  // it counts seconds; under an hour, minutes; otherwise "1 HOUR" / "1 HOUR 15 MINUTES"
+  // (never "1 HOUR 0 MINUTES"). Proper singular/plural throughout.
   if (c.showCountdown) {
-    const num = c.remainingMin < 100 ? `${c.remainingMin}` : `${Math.floor(c.remainingMin / 60)}:${pad2(c.remainingMin % 60)}`;
-    const unit = c.remainingMin < 100 ? 'MINUTES' : 'HRS';
-    const numSize = clamp(b.h * 0.15, 28, 96);
-    const uSize = clamp(numSize * 0.3, 12, 30);
-    const numW = approxWidth(num, numSize);
-    const uW = approxWidth(unit, uSize) + numSize * 0.12;
-    const startX = cx - (numW + uW) / 2;
-    const numBase = b.y + b.h * 0.82;
-    out.push(text(startX, numBase, num, { size: numSize, fill: c.p.text, family: FONT_DISPLAY, weight: 800, anchor: 'start' }));
-    out.push(text(startX + numW + numSize * 0.12, numBase, unit, { size: uSize, fill: c.p.textDim, family: FONT_SANS, weight: 600, anchor: 'start', letter: 1 }));
-    out.push(text(cx, numBase + uSize * 1.5, `UNTIL ${c.eventWord}`, { size: uSize, fill: c.p.textDim, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 3 }));
+    const sec = Math.max(0, c.remainingSec);
+    const h = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const seg = (n: number, w: string) => ({ n: String(n), w: n === 1 ? w : w + 'S' });
+    const segs = sec < 60 ? [seg(s, 'SECOND')] : h === 0 ? [seg(mm, 'MINUTE')] : mm === 0 ? [seg(h, 'HOUR')] : [seg(h, 'HOUR'), seg(mm, 'MINUTE')];
+    let numSize = clamp(b.h * 0.14, 22, 84);
+    const usz = () => clamp(numSize * 0.32, 11, 30);
+    const width = () => segs.reduce((a, p, i) => a + approxWidth(p.n, numSize) + numSize * 0.12 + approxWidth(p.w, usz()) + (i < segs.length - 1 ? numSize * 0.3 : 0), 0);
+    if (width() > b.w * 0.9) numSize *= (b.w * 0.9) / width();
+    const us = usz();
+    const ringBottom = ringCy + R + sw;
+    const numBase = ringBottom + numSize; // baseline sits below the ring with a clear gap
+    let x = cx - width() / 2;
+    for (let i = 0; i < segs.length; i++) {
+      out.push(text(x, numBase, segs[i].n, { size: numSize, fill: c.p.text, family: FONT_DISPLAY, weight: 800, anchor: 'start' }));
+      x += approxWidth(segs[i].n, numSize) + numSize * 0.12;
+      out.push(text(x, numBase, segs[i].w, { size: us, fill: c.p.textDim, family: FONT_SANS, weight: 600, anchor: 'start', letter: 1 }));
+      x += approxWidth(segs[i].w, us) + (i < segs.length - 1 ? numSize * 0.3 : 0);
+    }
+    out.push(text(cx, numBase + us * 1.6, `UNTIL ${c.eventWord}`, { size: us, fill: c.p.textDim, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 3 }));
   }
   return out.join('');
 }
@@ -962,11 +997,13 @@ function jumuahBar(b: Box, m: Model, c: Ctx): string {
 /** A scrolling ticker strip along the bottom. The text is tiled and offset by the
  *  clock so it scrolls continuously; smoothness depends on the frame cadence (the
  *  renderer speeds up while a ticker is active). */
-function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, bandOnly: boolean): string {
+function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, bandOnly: boolean, prohibited = false): string {
   const { y, bandH, fs } = tickerLayout(W, H);
   const out: string[] = [];
-  out.push(rect(0, y, W, bandH, 0, hexToRgba(p.bg, 0.6)));
-  out.push(rect(0, y, W, Math.max(1.5, bandH * 0.025), 0, hexToRgba(p.primary, 0.55)));
+  // A prohibited-time message scrolls in red, with a red top edge, so it reads clearly
+  // as a warning over any theme (the ffmpeg drawtext uses the matching colour).
+  out.push(rect(0, y, W, bandH, 0, hexToRgba(p.bg, prohibited ? 0.72 : 0.6)));
+  out.push(rect(0, y, W, Math.max(1.5, bandH * 0.025), 0, prohibited ? TICKER_RED : hexToRgba(p.primary, 0.55)));
   if (!bandOnly) {
     const seg = `${msg}${TICKER_SEP}`;
     const segW = Math.max(60, approxWidth(seg, fs));
@@ -974,7 +1011,7 @@ function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, ba
     const offset = ((now.getTime() / 1000) * speed) % segW;
     const baseline = y + bandH * 0.66;
     for (let x = -offset; x < W; x += segW) {
-      out.push(text(x, baseline, seg, { size: fs, fill: p.text, family: FONT_SANS, weight: 600, anchor: 'start' }));
+      out.push(text(x, baseline, seg, { size: fs, fill: prohibited ? TICKER_RED : p.text, family: FONT_SANS, weight: prohibited ? 700 : 600, anchor: 'start' }));
     }
   }
   return out.join('');
@@ -995,7 +1032,7 @@ function layoutReference(a: Box, m: Model, c: Ctx): string {
     out.push(panelHeader({ x: a.x, y, w: a.w, h: hH }, c));
     y += hH + gap;
     const cH = a.h * 0.14;
-    out.push(panelClock({ x: a.x, y, w: a.w, h: cH }, c));
+    out.push(panelClock({ x: a.x, y, w: a.w, h: cH }, c, 'start'));
     y += cH + gap;
     const rH = a.h * 0.3;
     out.push(panelRing({ x: a.x, y, w: a.w, h: rH }, c));
@@ -1012,10 +1049,11 @@ function layoutReference(a: Box, m: Model, c: Ctx): string {
   out.push(panelHeader({ x: a.x, y: a.y, w: headW, h: topH }, c));
   const clockX = a.x + headW + gap;
   out.push(panelClock({ x: clockX, y: a.y, w: a.x + a.w - clockX, h: topH }, c));
-  const ringW = (a.w - gap) * 0.44;
-  out.push(panelRing({ x: a.x, y: midY, w: ringW, h: midH }, c));
-  const tableX = a.x + ringW + gap;
-  out.push(panelTable({ x: tableX, y: midY, w: a.x + a.w - tableX, h: midH }, m, c));
+  // Prayer table on the LEFT, the countdown ring on the RIGHT.
+  const tableW = (a.w - gap) * 0.56;
+  out.push(panelTable({ x: a.x, y: midY, w: tableW, h: midH }, m, c));
+  const ringX = a.x + tableW + gap;
+  out.push(panelRing({ x: ringX, y: midY, w: a.x + a.w - ringX, h: midH }, c));
   if (jbH) out.push(jumuahBar({ x: a.x, y: a.y + a.h - jbH, w: a.w, h: jbH }, m, c));
   return out.join('');
 }
@@ -1102,17 +1140,31 @@ type Overlay =
   | { kind: 'iqamah'; secs: number; key: string }
   | { kind: 'hadith'; item: HadithItem };
 
+/** The zawāl (pre-Dhuhr) prohibited-to-pray window, if it is active now — its end (the
+ *  Dhuhr Adhan) is when prayer is allowed again. Shared by the full-screen overlay and
+ *  the bottom red ticker so both cover the exact same window. */
+function prohibitedWindow(tt: Timetable, m: Model, nowHours: number): { secsLeft: number } | null {
+  const pn = tt.prohibitedNotice;
+  if (!pn?.enabled) return null;
+  const dhuhr = m.times.dhuhr; // astronomical zenith → the Dhuhr Adhan ends the window
+  const win = Math.max(1, pn.minutes) / 60;
+  if (nowHours >= dhuhr - win && nowHours < dhuhr) return { secsLeft: Math.max(0, (dhuhr - nowHours) * 3600) };
+  return null;
+}
+
+/** The red scrolling message shown along the bottom during a ticker-mode prohibited window. */
+function prohibitedMessage(tt: Timetable, m: Model): string {
+  return `Prohibited time for prayer — please wait until the Dhuhr adhan (${fmtShort(m.times.dhuhr, tt.timeFormat)})`;
+}
+
 /** Which full-screen overlay (if any) is active right now. Precedence: the zawāl
  *  notice, then the pre-Iqāmah countdown, then the during-salah hadith. */
 function activeOverlay(tt: Timetable, m: Model, nowHours: number, now: Date): Overlay | null {
-  // 1) Prohibited (zawāl) window before the Dhuhr Adhan.
-  const pn = tt.prohibitedNotice;
-  if (pn?.enabled) {
-    const dhuhr = m.times.dhuhr; // astronomical zenith / Dhuhr Adhan
-    const win = Math.max(1, pn.minutes) / 60;
-    if (nowHours >= dhuhr - win && nowHours < dhuhr) {
-      return { kind: 'prohibited', secs: Math.max(0, (dhuhr - nowHours) * 3600) };
-    }
+  // 1) Prohibited (zawāl) window before the Dhuhr Adhan — full-screen ONLY when NOT in
+  //    ticker mode (ticker mode shows a red bottom scroll instead; see activeTicker).
+  if (tt.prohibitedNotice?.enabled && !tt.prohibitedNotice.ticker) {
+    const pw = prohibitedWindow(tt, m, nowHours);
+    if (pw) return { kind: 'prohibited', secs: pw.secsLeft };
   }
   // 2) Full-screen countdown for the last minutes before any Iqāmah.
   const ic = tt.iqamahCountdown;
@@ -1138,14 +1190,6 @@ function activeOverlay(tt: Timetable, m: Model, nowHours: number, now: Date): Ov
     }
   }
   return null;
-}
-
-/** True if any full-screen overlay is showing now — used to hide the ffmpeg ticker. */
-function overlayActiveNow(tt: Timetable, now: Date): boolean {
-  if (tt.latitude == null || tt.longitude == null) return false;
-  const m = buildModel(tt, now);
-  const nowHours = m.parts.hour + m.parts.minute / 60 + m.parts.second / 3600;
-  return activeOverlay(tt, m, nowHours, now) != null;
 }
 
 /** Calm hadith card over a dimmed scene, shown during salah (Arabic above English). */
@@ -1207,7 +1251,7 @@ function iqamahCountdownView(secsLeft: number, prayerKey: string, p: Palette, L:
   const counter = `${pad2(mm)}:${pad2(ss)}`;
   const pname = (L[prayerKey] ?? prayerKey).toUpperCase();
   out.push(text(cx, H * 0.34, `${pname} ${(L.iqamah ?? 'Iqamah').toUpperCase()} IN`, { size: clamp(W * 0.02, 18, 44), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 4 }));
-  out.push(text(cx, H * 0.6, counter, { size: clamp(W * 0.16, 90, 360), fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
+  out.push(text(cx, H * 0.6, counter, { size: clamp(W * 0.16, 90, 360), fill: p.light ? p.text : 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
   out.push(text(cx, H * 0.74, 'Please line up for prayer', { size: clamp(W * 0.016, 14, 30), fill: p.textDim, anchor: 'middle' }));
   return out.join('');
 }
@@ -1235,7 +1279,7 @@ function prohibitedView(secsLeft: number, p: Palette, L: Record<string, string>,
   }
   const dhuhr = (L.dhuhr ?? 'Dhuhr').toUpperCase();
   out.push(text(cx, H * 0.66, `${dhuhr} ${(L.athan ?? 'Adhan').toUpperCase()} IN`, { size: clamp(W * 0.014, 13, 28), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 3 }));
-  out.push(text(cx, H * 0.78, counter, { size: clamp(W * 0.09, 60, 200), fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
+  out.push(text(cx, H * 0.78, counter, { size: clamp(W * 0.09, 60, 200), fill: p.light ? p.text : 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
   return out.join('');
 }
 
@@ -1320,7 +1364,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   const clock = fmtClock(nowHours, tt.timeFormat, tt.showSeconds);
 
   const remMin = (m.nextHours - nowHours) * 60;
-  const remainingMin = Math.max(0, Math.round(remMin));
+  const remainingSec = Math.max(0, Math.round(remMin * 60));
   const nextRow = m.rows.find((r) => r.next) ?? m.rows[0];
   const nextLabel = rowName(nextRow, L);
   const nextArabic = PRAYER_LABELS.ar[nextRow.label] ?? '';
@@ -1339,7 +1383,9 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
   const greg = gregorian(m.parts, tt.language, tt.gregorianOffset ?? 0);
   const hij = hijri(m.parts, tt.language, tt.hijriOffset ?? 0);
-  const tickerText = activeTickerText(tt, m.parts);
+  // Ticker-mode prohibited window shows a red message that overrides the normal ticker.
+  const prohibitedTickerOn = !!tt.prohibitedNotice?.ticker && !!prohibitedWindow(tt, m, nowHours);
+  const tickerText = prohibitedTickerOn ? prohibitedMessage(tt, m) : activeTickerText(tt, m.parts);
 
   const P = Math.round(Math.min(W, H) * 0.05);
   const cel = celestialPos(m.times, nowHours, W, H, P);
@@ -1367,9 +1413,12 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   //    AND the scrolling ticker — see activeTickerString) ──────────────────────
   const overlay = activeOverlay(tt, m, nowHours, now);
   if (overlay) {
-    if (overlay.kind === 'prohibited') out.push(prohibitedView(overlay.secs, p, L, W, H));
-    else if (overlay.kind === 'iqamah') out.push(iqamahCountdownView(overlay.secs, overlay.key, p, L, W, H));
-    else out.push(salahHadithView(overlay.item, now, clock, p, W, H));
+    // Full-screen overlays always dim to a dark scrim, so use light text even on a light
+    // theme (dark-on-dark would be unreadable).
+    const pS = p.light ? { ...p, text: '#f2f6f3', textDim: '#c8d3cc', textFaint: '#96a69d' } : p;
+    if (overlay.kind === 'prohibited') out.push(prohibitedView(overlay.secs, pS, L, W, H));
+    else if (overlay.kind === 'iqamah') out.push(iqamahCountdownView(overlay.secs, overlay.key, pS, L, W, H));
+    else out.push(salahHadithView(overlay.item, now, clock, pS, W, H));
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
   }
 
@@ -1393,7 +1442,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     nextLabel,
     nextArabic,
     eventWord,
-    remainingMin,
+    remainingSec,
     ringProgress,
     showLogo: tt.showLogo,
     showName: tt.showName !== false,
@@ -1418,7 +1467,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   }
 
   // ── Scrolling ticker (drawn last, over everything) ───────────────────────────
-  if (tickerText) out.push(tickerBand(tickerText, now, p, W, H, !!opts.tickerBandOnly));
+  if (tickerText) out.push(tickerBand(tickerText, now, p, W, H, !!opts.tickerBandOnly, prohibitedTickerOn));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }

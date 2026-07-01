@@ -701,9 +701,17 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
             <Toggle checked={pn.enabled} onChange={(v) => setPn({ enabled: v })} label="Show the prohibited-time notice" />
           </div>
           {pn.enabled && (
-            <Field label="Show for (minutes before the Dhuhr Adhan)" hint="A countdown notice appears this many minutes before Dhuhr, when voluntary prayer is discouraged.">
-              <input className="input" type="number" min={1} max={45} value={pn.minutes} onChange={(e) => setPn({ minutes: Number(e.target.value) })} />
-            </Field>
+            <>
+              <Field label="Show for (minutes before the Dhuhr Adhan)" hint="A notice appears this many minutes before Dhuhr, when voluntary prayer is discouraged.">
+                <input className="input" type="number" min={1} max={45} value={pn.minutes} onChange={(e) => setPn({ minutes: Number(e.target.value) })} />
+              </Field>
+              <div className="toggle-row row-between" style={{ marginBlockStart: '0.7rem' }}>
+                <span className="label" style={{ margin: 0 }}>
+                  Show as a red scroll message at the bottom <span className="hint">— instead of the full-screen notice; overrides any ticker for the whole window</span>
+                </span>
+                <Toggle checked={!!pn.ticker} onChange={(v) => setPn({ ticker: v })} label="Show as a bottom scroll message" />
+              </div>
+            </>
           )}
         </div>
 

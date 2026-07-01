@@ -3,18 +3,24 @@
 # Bundled fonts
 
 Fonts vendored into the image so rendering is identical on every host, and so the
-renderer never depends on exactly which glyphs the distro's font packages happen to
-ship.
+renderer never depends on which glyphs the distro's font packages happen to ship.
+resvg picks **one** font per text run and does not per-glyph fall back, so the Arabic
+face has to cover everything a run might contain (Arabic letters, the ﷺ ligature, AND
+Latin punctuation like `"`, `(`, `)`), or that character renders as a tofu box.
 
-## NotoNaskhArabic-Regular.ttf
+## Amiri-Regular.ttf  (the Arabic face)
+
+- **Source:** [Amiri](https://github.com/aliftype/amiri) (via Google Fonts), a
+  traditional Naskh typeface.
+- **License:** SIL Open Font License 1.1 — see [`LICENSE-Amiri-OFL.txt`](LICENSE-Amiri-OFL.txt).
+- **Why:** it has the full Arabic script, the ﷺ ligature (U+FDFA), **and** complete
+  Latin punctuation, so a hadith like `… قال: "…" ((رواه …))` renders in one font with
+  no broken/tofu characters. `fonts.ts` loads it as the primary Arabic face and
+  `FONT_ARABIC` names it first.
+
+## NotoNaskhArabic-Regular.ttf  (secondary Arabic fallback)
 
 - **Source:** [notofonts/arabic](https://github.com/notofonts/notofonts.github.io/tree/main/fonts/NotoNaskhArabic)
-  (Google Noto, static hinted build).
-- **License:** SIL Open Font License 1.1 — see [`LICENSE-OFL.txt`](LICENSE-OFL.txt).
-  OFL is compatible with this repository's AGPL-3.0-only code (fonts are bundled as
-  data; the OFL governs the font file itself).
-- **Why vendored:** the renderer must draw the Arabic _ṣallā-llāhu ʿalayhi wa-sallam_
-  ligature **ﷺ (U+FDFA)** correctly. Debian's `fonts-noto-core` ships Noto Naskh Arabic
-  as a **variable** font, and resvg's variable-font handling can drop that ligature to a
-  tofu box. This static face is verified to contain U+FDFA, and `fonts.ts` loads it with
-  priority so the glyph always renders.
+  (Google Noto, static hinted build). **License:** SIL OFL 1.1 — see [`LICENSE-OFL.txt`](LICENSE-OFL.txt).
+- Kept as a fallback Arabic face. (On its own it lacked `"`, `(`, `)`, which is what
+  left tofu boxes in punctuated hadith text — Amiri fixes that.)

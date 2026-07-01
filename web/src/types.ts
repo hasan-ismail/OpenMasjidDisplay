@@ -36,7 +36,7 @@ export interface TickerMessage { id: string; text: string; start: string; end: s
 export interface Ticker { enabled: boolean; messages: TickerMessage[] }
 export interface HadithItem { ar: string; en: string }
 export interface SalahHadith { enabled: boolean; minutes: number; items: HadithItem[] }
-export interface ProhibitedNotice { enabled: boolean; minutes: number }
+export interface ProhibitedNotice { enabled: boolean; minutes: number; ticker?: boolean }
 export interface IqamahCountdown { enabled: boolean; minutes: number }
 export interface TimetableWidget { enabled: boolean }
 export interface Timetable {

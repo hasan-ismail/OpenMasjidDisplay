@@ -92,6 +92,9 @@ export interface ProhibitedNotice {
   enabled: boolean;
   /** how many minutes before the Dhuhr Adhan to show it */
   minutes: number;
+  /** show a red scrolling message along the bottom (overriding any ticker) instead of
+   *  the full-screen notice */
+  ticker?: boolean;
 }
 
 /** A full-screen countdown shown for the last minutes before each Iqāmah. */

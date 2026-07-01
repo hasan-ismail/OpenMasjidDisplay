@@ -160,6 +160,7 @@ function normProhibited(v: unknown, base?: ProhibitedNotice): ProhibitedNotice |
   return {
     enabled: bool(o.enabled, base?.enabled ?? false),
     minutes: intIn(o.minutes, base?.minutes ?? 10, 1, 45),
+    ticker: o.ticker === undefined ? base?.ticker ?? false : bool(o.ticker, false),
   };
 }
 function normIqamahCountdown(v: unknown, base?: IqamahCountdown): IqamahCountdown | undefined {

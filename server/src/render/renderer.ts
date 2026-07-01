@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config';
 import { makeLog } from '../logger';
-import { dimsFor, activeTickerString, tickerLayout, type Dims } from './svg';
+import { dimsFor, activeTicker, tickerLayout, TICKER_RED, type Dims } from './svg';
 import { primaryFontFile } from './fonts';
 import { RenderWorker } from './renderPool';
 import type { Timetable } from '../types';
@@ -27,11 +27,11 @@ const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
-function safeTicker(tt: Timetable): string {
+function safeTicker(tt: Timetable): { text: string; prohibited: boolean } {
   try {
-    return activeTickerString(tt, new Date());
+    return activeTicker(tt, new Date());
   } catch {
-    return '';
+    return { text: '', prohibited: false };
   }
 }
 
@@ -45,12 +45,14 @@ export interface TickerSpec {
   fontfile: string;
   /** scroll speed 1 (slow) … 10 (fast) */
   speed: number;
+  /** a prohibited-time warning → drawn in red (overrides any normal ticker) */
+  prohibited: boolean;
 }
 
 // Ticker cadence: 20 fps (smooth, still light on a 2-core box — the heavy SVG render
 // stays at 1 fps on the worker; ffmpeg just duplicates frames and animates the text).
 // Quantising the scroll to a whole number of pixels PER FRAME is what removes judder.
-const TICKER_FPS = 20;
+const TICKER_FPS = 30;
 /** Rasterise the timetable at a CAPPED resolution and let ffmpeg upscale to the
  *  output. The heavy per-second work is the resvg render; capping it (a 720p frame is
  *  ~2.25× cheaper than 1080p) keeps every render well under its 1-second slot even
@@ -58,7 +60,7 @@ const TICKER_FPS = 20;
  *  second. Crucially the upscale is a `scale` filter set ONCE at spawn, so the layout
  *  carousel (which only changes SVG content, not ffmpeg args) still never respawns
  *  ffmpeg → the decoder never reconnects. Output ≤ 720p renders 1:1 (no upscale). */
-const RENDER_CAP = 1280; // longest side of the rasterised frame
+const RENDER_CAP = 1600; // longest side of the rasterised frame (crisper 1080p than 1280, still well under the 1 s render budget)
 export function renderDimsFor(out: Dims): Dims {
   const longest = Math.max(out.width, out.height);
   if (longest <= RENDER_CAP) return out;
@@ -93,7 +95,8 @@ function timetableVf(d: Dims, ticker: TickerSpec | null, inDims: Dims = d): stri
     // frame (no sub-pixel rounding wobble); the tiling copies hide the wrap.
     const x = `w-mod(floor(t*${TICKER_FPS})*${pxPerFrame}\\,${period})${k > 0 ? `-${k}*(${period})` : ''}`;
     // expansion=none: treat the message file as literal text (no %{...} / escape interpretation).
-    dt.push(`drawtext=fontfile='${ticker.fontfile}':textfile='${ticker.textfile}':expansion=none:fontsize=${size}:fontcolor=white:x=${x}:y=${yExpr}`);
+    const color = ticker.prohibited ? `0x${TICKER_RED.replace('#', '')}` : 'white';
+    dt.push(`drawtext=fontfile='${ticker.fontfile}':textfile='${ticker.textfile}':expansion=none:fontsize=${size}:fontcolor=${color}:x=${x}:y=${yExpr}`);
   }
   return `${up}fps=${TICKER_FPS},${dt.join(',')},format=yuv420p`;
 }
@@ -101,16 +104,23 @@ function timetableVf(d: Dims, ticker: TickerSpec | null, inDims: Dims = d): stri
 /** @param d output (encoded) dims; @param inDims the rasterised frame piped on stdin
  *  (== d unless capped, in which case ffmpeg upscales d ← inDims). */
 function timetableArgs(d: Dims, target: string, ticker: TickerSpec | null, inDims: Dims = d): string[] {
-  const br = d.height >= 1080 ? 3500 : 1800;
+  // The display is mostly static high-detail (gradients, glass, crisp text), so a low
+  // CBR starved it and it went blocky/banded. Give it a generous bitrate — the content
+  // compresses well so this only spends bits where detail actually needs them — and use
+  // a slightly better preset (the heavy work is the 1 fps SVG render, so the encoder has
+  // ample headroom). GOP is one keyframe per second at the output fps.
+  const ofps = ticker ? TICKER_FPS : 15;
+  const br = d.height >= 1080 ? 8000 : 4000;
+  const buf = br * 2;
   return [
     '-hide_banner', '-loglevel', 'warning',
     '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${inDims.width}x${inDims.height}`, '-framerate', '1', '-i', 'pipe:0',
     '-vf', timetableVf(d, ticker, inDims), '-fps_mode', 'cfr',
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
     '-profile:v', 'baseline', '-level', levelFor(d.height),
-    '-g', '30', '-keyint_min', '30', '-sc_threshold', '0', '-bf', '0',
+    '-g', `${ofps}`, '-keyint_min', `${ofps}`, '-sc_threshold', '0', '-bf', '0',
     '-x264-params', 'repeat-headers=1:nal-hrd=cbr',
-    '-b:v', `${br}k`, '-maxrate', `${br}k`, '-bufsize', `${br}k`,
+    '-b:v', `${br}k`, '-maxrate', `${br}k`, '-bufsize', `${buf}k`,
     '-an', '-f', 'rtsp', '-rtsp_transport', 'tcp', target,
   ];
 }
@@ -297,6 +307,7 @@ class TimetablePipeline extends FfmpegPipeline {
   // when it changes (schedule windows, edits, enable/disable), rewrite the text file
   // and respawn ffmpeg so its drawtext filters rebuild.
   private tickerText = '';
+  private tickerProhibited = false; // red prohibited-time message → drawtext colour is an ffmpeg arg
   private tickerSpeed = 5; // scroll speed is an ffmpeg arg → respawn when it changes
   private readonly tickerFile: string;
   // The size we rasterise (capped); ffmpeg upscales to this.dims. Keeps each render
@@ -309,7 +320,9 @@ class TimetablePipeline extends FfmpegPipeline {
     const tt = getTt();
     this.dims = tt ? dimsFor(tt.orientation, tt.quality) : { width: 1280, height: 720 };
     this.renderDims = renderDimsFor(this.dims);
-    this.tickerText = tt ? safeTicker(tt) : '';
+    const st = tt ? safeTicker(tt) : { text: '', prohibited: false };
+    this.tickerText = st.text;
+    this.tickerProhibited = st.prohibited;
     this.tickerSpeed = tt?.tickerSpeed ?? 5;
     this.writeTickerFile();
   }
@@ -317,7 +330,7 @@ class TimetablePipeline extends FfmpegPipeline {
   private tickerSpec(): TickerSpec | null {
     const font = primaryFontFile();
     if (!this.tickerText || !font) return null;
-    return { text: this.tickerText, textfile: this.tickerFile, fontfile: font, speed: this.tickerSpeed };
+    return { text: this.tickerText, textfile: this.tickerFile, fontfile: font, speed: this.tickerSpeed, prohibited: this.tickerProhibited };
   }
 
   private writeTickerFile(): void {
@@ -376,10 +389,12 @@ class TimetablePipeline extends FfmpegPipeline {
       this.stop();
       return;
     }
-    // Ticker text changed → rewrite the file and respawn so drawtext rebuilds.
+    // Ticker text or its colour (prohibited↔normal) changed → rewrite the file and
+    // respawn so the drawtext filters (text + fontcolor) rebuild.
     const tk = safeTicker(tt);
-    if (tk !== this.tickerText) {
-      this.tickerText = tk;
+    if (tk.text !== this.tickerText || tk.prohibited !== this.tickerProhibited) {
+      this.tickerText = tk.text;
+      this.tickerProhibited = tk.prohibited;
       this.writeTickerFile();
       this.restartProc();
       return;
