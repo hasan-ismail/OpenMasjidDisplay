@@ -71,6 +71,7 @@ export interface Timetable {
   showLogo: boolean;
   showSeconds: boolean;
   showFooter: boolean;
+  showCelestial: boolean;
   backgroundImage: string;
   logoImage: string;
   labels?: Record<string, string>;

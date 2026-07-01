@@ -155,6 +155,8 @@ export interface Timetable {
   showSeconds: boolean;
   /** show the small footer line (custom note, or the calculation-method note) */
   showFooter: boolean;
+  /** show the sun/moon arcing across the sky (and the soft glow it casts on the glass) */
+  showCelestial: boolean;
   /** filename of an uploaded custom background under /data/uploads ('' = themed scene) */
   backgroundImage: string;
   /** filename of an uploaded masjid logo under /data/uploads ('' = the built-in mark) */

@@ -13,9 +13,9 @@ interface Props {
 
 const METHODS = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Custom'] as const;
 const LAYOUTS: { id: TimetableLayout; label: string }[] = [
-  { id: 'centered', label: 'Centered' },
+  { id: 'centered', label: 'Columns' },
   { id: 'clockTop', label: 'Spotlight' },
-  { id: 'split', label: 'Split' },
+  { id: 'split', label: 'Sidebar' },
 ];
 
 export function Timetables({ state, refetch }: Props) {
@@ -136,7 +136,7 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     method: 'MWL', fajrAngle: 18, ishaAngle: 17, asrMadhab: 'Hanafi', timezone: state.settings.scheduleTimezone ?? '',
     timeFormat: '12h', language: 'en', hijriOffset: 0, gregorianOffset: 0,
     iqamah: { fajr: { mode: 'offset', offset: 20 }, dhuhr: { mode: 'offset', offset: 10 }, asr: { mode: 'offset', offset: 10 }, maghrib: { mode: 'offset', offset: 5 }, isha: { mode: 'offset', offset: 10 } },
-    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true,
+    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true, showCelestial: true,
     backgroundImage: '', logoImage: '', footerNote: '', tickerSpeed: 5, createdAt: '',
   };
 }
@@ -367,7 +367,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           </Field>
           <div className="toggle-row row-between" style={{ marginBlockEnd: '0.9rem' }}>
             <span className="label" style={{ margin: 0 }}>
-              Rotate layouts over the day <span className="hint">— cycles centered / spotlight / split every 5 min (prevents TV burn-in)</span>
+              Rotate layouts over the day <span className="hint">— cycles columns / spotlight / sidebar every 5 min (prevents TV burn-in)</span>
             </span>
             <Toggle checked={f.layoutCarousel} onChange={(v) => set('layoutCarousel', v)} label="Rotate layouts over the day" />
           </div>
@@ -523,6 +523,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
             <ToggleRow label="Countdown to next prayer" checked={f.showCountdown} onChange={(v) => set('showCountdown', v)} />
             <ToggleRow label="Seconds on the clock" checked={f.showSeconds} onChange={(v) => set('showSeconds', v)} />
             <ToggleRow label="Sunrise" checked={f.showSunrise} onChange={(v) => set('showSunrise', v)} />
+            <ToggleRow label="Sun & moon in the background" checked={f.showCelestial} onChange={(v) => set('showCelestial', v)} />
             <ToggleRow label="Calculation-method footnote" checked={f.showFooter} onChange={(v) => set('showFooter', v)} />
           </div>
 
@@ -590,7 +591,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
               <button type="button" className="btn btn--ghost btn--sm" style={{ marginBlockStart: '0.6rem' }} onClick={() => setShowTable((v) => !v)}>
                 {showTable ? 'Hide the table editor' : 'Or edit times in a table (by month)'}
               </button>
-              {showTable && <IqamahYearEditor tt={tt} onSaved={(n) => setCsvRows(n || null)} />}
+              {showTable && <IqamahYearEditor tt={tt} existingRows={csvRows} onSaved={(n) => setCsvRows(n || null)} />}
             </div>
           ) : (
             <span className="hint">Create the timetable first, then you can set yearly times.</span>
@@ -974,11 +975,15 @@ function daysInMonth(month: number, year: number = new Date().getFullYear()): nu
 }
 
 /** In-app monthly grid for setting exact Iqamah clock times across the year. */
-function IqamahYearEditor({ tt, onSaved }: { tt: Timetable; onSaved: (rows: number) => void }) {
+function IqamahYearEditor({ tt, existingRows, onSaved }: { tt: Timetable; existingRows: number | null; onSaved: (rows: number) => void }) {
   const toast = useToast();
   const [year, setYear] = useState<Record<string, Record<string, string>>>(() => JSON.parse(JSON.stringify(tt.iqamahYear ?? {})));
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [busy, setBusy] = useState(false);
+  // True when this timetable already had per-day times when the editor opened (e.g.
+  // imported from a CSV) — saving manual edits then overrides them, so we confirm first.
+  const [hadExisting] = useState(() => (existingRows ?? 0) > 0);
+  const [confirmOverride, setConfirmOverride] = useState(false);
   const PR = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
   const pad = (n: number) => String(n).padStart(2, '0');
   const key = (d: number) => `${pad(month)}-${pad(d)}`;
@@ -992,11 +997,12 @@ function IqamahYearEditor({ tt, onSaved }: { tt: Timetable; onSaved: (rows: numb
       if (Object.keys(row).length) ny[k] = row; else delete ny[k];
       return ny;
     });
-  const save = async () => {
+  const doSave = async () => {
     setBusy(true);
     try {
       const r = await api.saveIqamahYear(tt.id, year);
       onSaved(r.rows);
+      setConfirmOverride(false);
       toast(`Saved Iqamah times for ${r.rows} day${r.rows === 1 ? '' : 's'}.`);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not save the times.', 'error');
@@ -1004,7 +1010,10 @@ function IqamahYearEditor({ tt, onSaved }: { tt: Timetable; onSaved: (rows: numb
       setBusy(false);
     }
   };
+  // Warn before overriding times that were already imported/saved for this timetable.
+  const save = () => { if (hadExisting) setConfirmOverride(true); else void doSave(); };
   return (
+    <>
     <div className="iqyear">
       <div className="row" style={{ gap: '0.5rem', marginBlock: '0.7rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <select className="select" style={{ width: 'auto' }} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
@@ -1031,6 +1040,20 @@ function IqamahYearEditor({ tt, onSaved }: { tt: Timetable; onSaved: (rows: numb
         </table>
       </div>
     </div>
+    <Modal
+      open={confirmOverride}
+      onClose={() => setConfirmOverride(false)}
+      title="Override imported times?"
+      footer={
+        <>
+          <button className="btn" onClick={() => setConfirmOverride(false)}>Cancel</button>
+          <button className="btn btn--primary" onClick={() => void doSave()} disabled={busy}>Override &amp; save</button>
+        </>
+      }
+    >
+      <p className="muted">This timetable already has per-day Iqāmah times (for example, imported from a CSV file). Saving your changes will override those imported times for the days you edited. Your CSV file itself isn't changed — you can re-import it to undo this.</p>
+    </Modal>
+    </>
   );
 }
 
