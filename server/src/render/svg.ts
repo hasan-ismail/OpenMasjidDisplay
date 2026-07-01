@@ -534,6 +534,8 @@ export interface WidgetRow {
   key: string;
   /** display name (localized + Jumu'ah-numbered) */
   label: string;
+  /** Arabic gloss shown beside the label (omitted when the widget language is Arabic) */
+  sub?: string;
   /** "h:mm" formatted Adhan time (or null) */
   adhan: string | null;
   /** "h:mm" formatted Iqamah time (or null) */
@@ -586,6 +588,146 @@ export function widgetData(tt: Timetable, now: Date): WidgetData {
         next: false,
       })),
     ],
+  };
+}
+
+/** One day in the widget's week table (Adhan times for the five prayers). */
+export interface WidgetDay {
+  iso: string;
+  dow: string;
+  dayLabel: string;
+  isToday: boolean;
+  isFocus: boolean;
+  fajr: string;
+  dhuhr: string;
+  asr: string;
+  maghrib: string;
+  isha: string;
+}
+/** The interactive web widget's data: the focus day's full card + a Mon–Sun week table. */
+export interface WidgetPayload {
+  masjidName: string;
+  timezone: string;
+  language: Lang;
+  rtl: boolean;
+  timeFormat: TimeFormat;
+  focus: {
+    iso: string;
+    gregorian: string;
+    hijri: string;
+    isToday: boolean;
+    rows: WidgetRow[];
+    next: { label: string; inSeconds: number } | null;
+  };
+  week: { startIso: string; endIso: string; label: string; days: WidgetDay[] };
+}
+
+const isoOf = (y: number, mo: number, d: number) => `${y}-${pad2(mo)}-${pad2(d)}`;
+function parseIsoDate(s?: string): { y: number; m: number; d: number } | null {
+  const m = s ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim()) : null;
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  return mo >= 1 && mo <= 12 && d >= 1 && d <= 31 ? { y, m: mo, d } : null;
+}
+/** The Monday (UTC Y-M-D) of the week containing the given date. */
+function mondayOf(y: number, mo: number, d: number): { y: number; m: number; d: number } {
+  const base = new Date(Date.UTC(y, mo - 1, d, 12));
+  const back = (base.getUTCDay() + 6) % 7; // days since Monday (0=Sun…6=Sat)
+  const mon = new Date(Date.UTC(y, mo - 1, d - back, 12));
+  return { y: mon.getUTCFullYear(), m: mon.getUTCMonth() + 1, d: mon.getUTCDate() };
+}
+
+/** Rich payload for the interactive web widget. `opts.date` (YYYY-MM-DD) sets the
+ *  card's focus day; `opts.weekStart` (any date in the week) sets the week table. Both
+ *  default to today so a plain `/w/<id>.json` still returns today + this week. */
+export function widgetPayload(tt: Timetable, now: Date, opts: { date?: string; weekStart?: string } = {}): WidgetPayload {
+  const tz = tt.timezone || undefined;
+  const L = labels(tt.language, tt.labels);
+  const lang = (tt.language || 'en') as Lang;
+  const method = tt.method === 'Custom' ? { label: 'Custom', fajr: tt.fajrAngle ?? 18, isha: tt.ishaAngle ?? 17 } : tt.method;
+  const hasLoc = tt.latitude != null && tt.longitude != null;
+  const today = localParts(now, tz);
+
+  const fd = parseIsoDate(opts.date);
+  const isToday = !fd || (fd.y === today.year && fd.m === today.month && fd.d === today.day);
+  const focusDate = isToday ? now : new Date(Date.UTC(fd!.y, fd!.m - 1, fd!.d, 12));
+  const fParts = localParts(focusDate, tz);
+
+  let rows: WidgetRow[] = [];
+  let next: { label: string; inSeconds: number } | null = null;
+  if (hasLoc) {
+    const fm = buildModel(tt, focusDate);
+    const nowHours = fm.parts.hour + fm.parts.minute / 60 + fm.parts.second / 3600;
+    rows = [
+      ...fm.rows.map((r) => ({
+        key: r.key,
+        label: rowName(r, L),
+        sub: lang !== 'ar' ? PRAYER_LABELS.ar[r.key] ?? '' : '',
+        adhan: r.adhan != null ? fmtShort(r.adhan, tt.timeFormat) : null,
+        iqamah: r.iqamah != null ? fmtShort(r.iqamah, tt.timeFormat) : null,
+        active: isToday && !!r.active,
+        next: isToday && !!r.next,
+      })),
+      ...fm.jumuah.map((t, i) => ({
+        key: `jumuah${i + 1}`,
+        label: (L.jumuah ?? "Jumu'ah") + (fm.jumuah.length > 1 ? ` ${i + 1}` : ''),
+        sub: lang !== 'ar' ? PRAYER_LABELS.ar.jumuah : '',
+        adhan: null,
+        iqamah: fmtShort(t, tt.timeFormat),
+        active: false,
+        next: false,
+      })),
+    ];
+    if (isToday) {
+      const nr = fm.rows.find((r) => r.next) ?? fm.rows[0];
+      next = { label: rowName(nr, L), inSeconds: Math.max(0, Math.round((fm.nextHours - nowHours) * 3600)) };
+    }
+  }
+
+  const anchor = parseIsoDate(opts.weekStart) ?? fd ?? { y: today.year, m: today.month, d: today.day };
+  const mon = mondayOf(anchor.y, anchor.m, anchor.d);
+  const dow = new Intl.DateTimeFormat(lang, { weekday: 'short', timeZone: 'UTC' });
+  const focusIso = isoOf(fParts.year, fParts.month, fParts.day);
+  const days: WidgetDay[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dObj = new Date(Date.UTC(mon.y, mon.m - 1, mon.d + i, 12));
+    const dp = localParts(dObj, tz);
+    const lbl = new Date(Date.UTC(dp.year, dp.month - 1, dp.day, 12));
+    const iso = isoOf(dp.year, dp.month, dp.day);
+    const times = hasLoc ? prayerTimes(dp, tt.latitude!, tt.longitude!, timezoneOffsetHours(dObj, tz), method, tt.asrMadhab) : null;
+    const f = (h: number | undefined) => (times && h != null ? fmtShort(h, tt.timeFormat) : '—');
+    days.push({
+      iso,
+      dow: dow.format(lbl),
+      dayLabel: `${dow.format(lbl)} ${dp.day}`,
+      isToday: dp.year === today.year && dp.month === today.month && dp.day === today.day,
+      isFocus: iso === focusIso,
+      fajr: f(times?.fajr), dhuhr: f(times?.dhuhr), asr: f(times?.asr), maghrib: f(times?.maghrib), isha: f(times?.isha),
+    });
+  }
+  const rangeFmt = new Intl.DateTimeFormat(lang, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const endObj = new Date(Date.UTC(mon.y, mon.m - 1, mon.d + 6, 12));
+
+  return {
+    masjidName: tt.masjidName || 'Our Masjid',
+    timezone: tt.timezone || '',
+    language: lang,
+    rtl: lang === 'ar' || lang === 'ur',
+    timeFormat: tt.timeFormat,
+    focus: {
+      iso: focusIso,
+      gregorian: gregorian(fParts, tt.language, tt.gregorianOffset ?? 0),
+      hijri: hijri(fParts, tt.language, tt.hijriOffset ?? 0),
+      isToday,
+      rows,
+      next,
+    },
+    week: {
+      startIso: isoOf(mon.y, mon.m, mon.d),
+      endIso: isoOf(endObj.getUTCFullYear(), endObj.getUTCMonth() + 1, endObj.getUTCDate()),
+      label: `${rangeFmt.format(new Date(Date.UTC(mon.y, mon.m - 1, mon.d, 12)))} – ${rangeFmt.format(endObj)}`,
+      days,
+    },
   };
 }
 
@@ -982,20 +1124,21 @@ function jumuahBar(b: Box, m: Model, c: Ctx): string {
   const zoneX = b.x + b.w * 0.42;
   const zoneW = b.x + b.w - pad - zoneX;
   const slotW = zoneW / n;
+  const ordGap = b.w * 0.008;
   m.jumuah.forEach((t, i) => {
-    const sx = zoneX + slotW * i;
-    const ord = n === 1 ? '' : c.lang === 'en' ? (JUMUAH_ORD[i] ?? `${i + 1}th`) : `${i + 1}`;
+    const slotMid = zoneX + slotW * (i + 0.5); // centre each "1st 1:30 PM" group in its equal
+    const ord = n === 1 ? '' : c.lang === 'en' ? (JUMUAH_ORD[i] ?? `${i + 1}th`) : `${i + 1}`; // slot → uniform spacing
     let timeSize = clamp(b.h * 0.4, 13, 46);
     const tstr = fmtShort(t, c.timeFormat);
-    const need = (ord ? approxWidth(ord + ' ', timeSize * 0.48) : 0) + approxWidth(tstr, timeSize);
-    if (need > slotW * 0.95) timeSize *= (slotW * 0.95) / need;
-    const os = clamp(timeSize * 0.48, 9, 22);
-    let tx = sx;
+    let os = clamp(timeSize * 0.48, 9, 22);
+    const groupW = () => (ord ? approxWidth(ord, os) + ordGap : 0) + approxWidth(tstr, timeSize);
+    if (groupW() > slotW * 0.92) { const k = (slotW * 0.92) / groupW(); timeSize *= k; os = clamp(timeSize * 0.48, 9, 22); }
+    let x = slotMid - groupW() / 2;
     if (ord) {
-      out.push(text(sx, midY + timeSize * 0.3, ord, { size: os, fill: c.p.goldSoft, family: FONT_SANS, weight: 700, anchor: 'start' }));
-      tx = sx + approxWidth(ord, os) + b.w * 0.006;
+      out.push(text(x, midY + timeSize * 0.3, ord, { size: os, fill: c.p.goldSoft, family: FONT_SANS, weight: 700, anchor: 'start' }));
+      x += approxWidth(ord, os) + ordGap;
     }
-    out.push(text(tx, midY + timeSize * 0.34, tstr, { size: timeSize, fill: c.p.text, family: FONT_DISPLAY, weight: 700, anchor: 'start' }));
+    out.push(text(x, midY + timeSize * 0.34, tstr, { size: timeSize, fill: c.p.text, family: FONT_DISPLAY, weight: 700, anchor: 'start' }));
   });
   return out.join('');
 }
@@ -1064,34 +1207,25 @@ function layoutReference(a: Box, m: Model, c: Ctx): string {
   return out.join('');
 }
 
-/** Announcement layout: the timetable becomes a compact left sidebar (brand + clock +
- *  table) and the cycling image fills the right (shown sharp, contained, no crop). */
-function announcementView(a: Box, m: Model, c: Ctx, image: string): string {
+/** Announcement layout: the cycling image fills the top (shown sharp, contained, no
+ *  crop) and — just like portrait mode — the clock sits bottom-left with the NEXT-PRAYER
+ *  ring in a widget right next to it. */
+function announcementView(a: Box, c: Ctx, image: string): string {
   const out: string[] = [];
   const gap = Math.min(a.w, a.h) * 0.02;
-  const sideW = clamp(a.w * 0.32, 220, 560);
-  const headerH = a.h * 0.14;
-  const clockH = a.h * 0.24;
-  out.push(panelHeader({ x: a.x, y: a.y, w: sideW, h: headerH }, c));
-  out.push(panelClock({ x: a.x, y: a.y + headerH + gap, w: sideW, h: clockH }, c));
-  const tY = a.y + headerH + gap + clockH + gap;
-  out.push(panelTable({ x: a.x, y: tY, w: sideW, h: a.y + a.h - tY }, m, c));
-  const availX = a.x + sideW + gap;
-  const availW = a.x + a.w - availX;
-  const availH = a.h;
-  let fw = availW;
-  let fh = (availW * 9) / 16;
-  if (fh > availH) {
-    fh = availH;
-    fw = (availH * 16) / 9;
-  }
-  const fx = availX + (availW - fw) / 2;
-  const fy = a.y + (availH - fh) / 2;
-  const r = Math.min(fw, fh) * 0.04;
-  out.push(rect(fx, fy, fw, fh, r, hexToRgba(c.p.bg, 0.85)));
-  out.push(`<clipPath id="annclip"><rect x="${fx.toFixed(1)}" y="${fy.toFixed(1)}" width="${fw.toFixed(1)}" height="${fh.toFixed(1)}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}"/></clipPath>`);
-  out.push(`<image href="${image}" x="${fx.toFixed(1)}" y="${fy.toFixed(1)}" width="${fw.toFixed(1)}" height="${fh.toFixed(1)}" preserveAspectRatio="xMidYMid meet" clip-path="url(#annclip)"/>`);
-  out.push(rect(fx, fy, fw, fh, r, 'none', `stroke="${HAIR}" stroke-width="1"`));
+  // A bottom row holds the clock + ring side by side; make it tall enough that the ring
+  // reads well, and give the image everything above it.
+  const rowH = clamp(a.h * 0.32, 150, 340);
+  const imgH = a.h - rowH - gap;
+  const r = clamp(Math.min(a.w, imgH) * 0.03, 10, 28);
+  // Image contained (no crop) in the top area, letterboxed on a soft glass panel.
+  out.push(glass(a.x, a.y, a.w, imgH, r, { raised: true }));
+  out.push(`<clipPath id="annclip"><rect x="${a.x.toFixed(1)}" y="${a.y.toFixed(1)}" width="${a.w.toFixed(1)}" height="${imgH.toFixed(1)}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}"/></clipPath>`);
+  out.push(`<image href="${image}" x="${a.x.toFixed(1)}" y="${a.y.toFixed(1)}" width="${a.w.toFixed(1)}" height="${imgH.toFixed(1)}" preserveAspectRatio="xMidYMid meet" clip-path="url(#annclip)"/>`);
+  const by = a.y + imgH + gap;
+  const half = (a.w - gap) / 2;
+  out.push(panelClock({ x: a.x, y: by, w: half, h: rowH }, c, 'start'));
+  out.push(panelRing({ x: a.x + half + gap, y: by, w: half, h: rowH }, c));
   return out.join('');
 }
 
@@ -1464,7 +1598,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
 
   if (opts.announcement) {
     // Slideshow: the timetable becomes a left sidebar, the image fills the right.
-    out.push(announcementView(area, m, ctx, opts.announcement));
+    out.push(announcementView(area, ctx, opts.announcement));
   } else {
     out.push(layoutReference(area, m, ctx));
   }

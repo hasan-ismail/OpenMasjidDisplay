@@ -18,7 +18,7 @@ import {
   clearCookieHeader,
 } from './auth';
 import { probePlatform, ssoConfigured, notify, siteInfo } from './fabric';
-import { widgetData } from './render/svg';
+import { widgetPayload } from './render/svg';
 import { renderWidgetHtml } from './widget';
 import { LoginLimiter } from './rateLimit';
 import { THEMES } from './render/theme';
@@ -226,7 +226,10 @@ export function createApi(deps: Deps) {
           res.end('Not found.');
           return;
         }
-        const data = widgetData(tt, new Date());
+        const data = widgetPayload(tt, new Date(), {
+          date: url.searchParams.get('date') ?? undefined,
+          weekStart: url.searchParams.get('week') ?? undefined,
+        });
         if (widgetMatch[2]) {
           // JSON feed — CORS-open so a masjid can also build their own UI from it.
           // The `app` marker lets the editor verify a public (tunnel) URL actually
