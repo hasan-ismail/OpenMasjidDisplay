@@ -123,6 +123,9 @@ export interface Timetable {
   textColor?: string;
   orientation: Orientation;
   quality: Quality;
+  /** stream bitrate caps (kbps) for the RTSP video, per output size; blank = default */
+  bitrate720?: number;
+  bitrate1080?: number;
   /** on-screen arrangement preset */
   layout: TimetableLayout;
   /** rotate through the layouts over the day to avoid screen burn-in */

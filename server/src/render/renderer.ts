@@ -103,14 +103,20 @@ function timetableVf(d: Dims, ticker: TickerSpec | null, inDims: Dims = d): stri
 
 /** @param d output (encoded) dims; @param inDims the rasterised frame piped on stdin
  *  (== d unless capped, in which case ffmpeg upscales d ← inDims). */
-function timetableArgs(d: Dims, target: string, ticker: TickerSpec | null, inDims: Dims = d): string[] {
+/** Bitrate cap (kbps) for a timetable's output size — the admin can override the
+ *  defaults per resolution in the timetable settings. */
+function brFor(tt: Timetable, d: Dims): number {
+  return d.height >= 1080 ? tt.bitrate1080 ?? 8000 : tt.bitrate720 ?? 4000;
+}
+
+function timetableArgs(d: Dims, target: string, ticker: TickerSpec | null, inDims: Dims = d, bitrate = 0): string[] {
   // The display is mostly static high-detail (gradients, glass, crisp text), so a low
   // CBR starved it and it went blocky/banded. Give it a generous bitrate — the content
   // compresses well so this only spends bits where detail actually needs them — and use
   // a slightly better preset (the heavy work is the 1 fps SVG render, so the encoder has
   // ample headroom). GOP is one keyframe per second at the output fps.
   const ofps = ticker ? TICKER_FPS : 15;
-  const br = d.height >= 1080 ? 8000 : 4000;
+  const br = bitrate > 0 ? bitrate : d.height >= 1080 ? 8000 : 4000;
   const buf = br * 2;
   return [
     '-hide_banner', '-loglevel', 'warning',
@@ -309,6 +315,7 @@ class TimetablePipeline extends FfmpegPipeline {
   private tickerText = '';
   private tickerProhibited = false; // red prohibited-time message → drawtext colour is an ffmpeg arg
   private tickerSpeed = 5; // scroll speed is an ffmpeg arg → respawn when it changes
+  private bitrate = 0; // configurable bitrate cap (kbps) — an ffmpeg arg → respawn on change
   private readonly tickerFile: string;
   // The size we rasterise (capped); ffmpeg upscales to this.dims. Keeps each render
   // fast enough that the per-second countdown never skips, with no ffmpeg respawn.
@@ -320,6 +327,7 @@ class TimetablePipeline extends FfmpegPipeline {
     const tt = getTt();
     this.dims = tt ? dimsFor(tt.orientation, tt.quality) : { width: 1280, height: 720 };
     this.renderDims = renderDimsFor(this.dims);
+    this.bitrate = tt ? brFor(tt, this.dims) : 0;
     const st = tt ? safeTicker(tt) : { text: '', prohibited: false };
     this.tickerText = st.text;
     this.tickerProhibited = st.prohibited;
@@ -343,7 +351,7 @@ class TimetablePipeline extends FfmpegPipeline {
   }
 
   protected args(): string[] {
-    return timetableArgs(this.dims, this.target(), this.tickerSpec(), this.renderDims);
+    return timetableArgs(this.dims, this.target(), this.tickerSpec(), this.renderDims, this.bitrate);
   }
 
   private restartProc(): void {
@@ -403,6 +411,14 @@ class TimetablePipeline extends FfmpegPipeline {
     if (want.width !== this.dims.width || want.height !== this.dims.height) {
       this.dims = want;
       this.renderDims = renderDimsFor(want);
+      this.bitrate = brFor(tt, this.dims);
+      this.restartProc();
+      return;
+    }
+    // Bitrate cap changed in settings → respawn so ffmpeg re-encodes at the new rate.
+    const wantBr = brFor(tt, this.dims);
+    if (wantBr !== this.bitrate) {
+      this.bitrate = wantBr;
       this.restartProc();
       return;
     }

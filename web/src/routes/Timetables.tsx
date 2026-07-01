@@ -256,6 +256,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   };
 
   const [csvRows, setCsvRows] = useState<number | null>(tt?.iqamahYear ? Object.keys(tt.iqamahYear).length : null);
+  const csvActive = (csvRows ?? 0) > 0; // a yearly CSV overrides the per-prayer rules
   const [showTable, setShowTable] = useState(false);
   const importCsv = (file: File) => {
     if (!tt) return;
@@ -417,6 +418,15 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
             </Field>
           </div>
 
+          <div className="grid2">
+            <Field label="Bitrate — 720p (kbps)" hint="Higher = sharper but heavier. Blank = default (4000).">
+              <input className="input" type="number" min={500} max={20000} step={250} placeholder="4000" value={f.bitrate720 ?? ''} onChange={(e) => set('bitrate720', e.target.value === '' ? undefined : Number(e.target.value))} />
+            </Field>
+            <Field label="Bitrate — 1080p (kbps)" hint="Blank = default (8000).">
+              <input className="input" type="number" min={500} max={30000} step={250} placeholder="8000" value={f.bitrate1080 ?? ''} onChange={(e) => set('bitrate1080', e.target.value === '' ? undefined : Number(e.target.value))} />
+            </Field>
+          </div>
+
           <Field label="Theme colour">
             <div className="chips">
               {state.themes.map((th) => (
@@ -540,9 +550,15 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
           </div>
 
           <h3 className="section-title">Iqamah times</h3>
+          {csvActive && (
+            <p className="hint" style={{ marginBlockStart: 0 }}>
+              A yearly CSV is in use, so these per-prayer rules are turned off. Fine-tune the exact times in the
+              table below, or <button type="button" onClick={clearCsv} style={{ background: 'none', border: 0, padding: 0, color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>clear the CSV</button> to use rules again.
+            </p>
+          )}
           <div className="list">
             {(['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const).map((k) => (
-              <IqamahRow key={k} name={k} rule={f.iqamah[k]} onChange={(r) => setF((p) => ({ ...p, iqamah: { ...p.iqamah, [k]: r } as IqamahConfig }))} />
+              <IqamahRow key={k} name={k} rule={f.iqamah[k]} disabled={csvActive} onChange={(r) => setF((p) => ({ ...p, iqamah: { ...p.iqamah, [k]: r } as IqamahConfig }))} />
             ))}
           </div>
 
@@ -573,7 +589,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
                 </p>
               )}
               <button type="button" className="btn btn--ghost btn--sm" style={{ marginBlockStart: '0.6rem' }} onClick={() => setShowTable((v) => !v)}>
-                {showTable ? 'Hide the table editor' : 'Or edit times in a table (by month)'}
+                {showTable ? 'Hide the table editor' : csvActive ? 'Fine-tune the imported times (by month)' : 'Or edit times in a table (by month)'}
               </button>
               {showTable && <IqamahYearEditor tt={tt} existingRows={csvRows} onSaved={(n) => setCsvRows(n || null)} />}
             </div>
@@ -925,20 +941,20 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 
 const PRAYER_TITLE: Record<string, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
 
-function IqamahRow({ name, rule, onChange }: { name: string; rule: IqamahRule; onChange: (r: IqamahRule) => void }) {
+function IqamahRow({ name, rule, onChange, disabled }: { name: string; rule: IqamahRule; onChange: (r: IqamahRule) => void; disabled?: boolean }) {
   return (
-    <div className="list-row">
+    <div className="list-row" style={disabled ? { opacity: 0.45, pointerEvents: 'none' } : undefined} aria-disabled={disabled}>
       <div className="list-row__main"><div className="list-row__title">{PRAYER_TITLE[name]}</div></div>
-      <select className="select" style={{ width: 'auto' }} value={rule.mode} onChange={(e) => onChange({ mode: e.target.value as IqamahRule['mode'], offset: 10, fixed: '13:30' })}>
+      <select className="select" style={{ width: 'auto' }} disabled={disabled} value={rule.mode} onChange={(e) => onChange({ mode: e.target.value as IqamahRule['mode'], offset: 10, fixed: '13:30' })}>
         <option value="offset">Minutes after Adhan</option>
         <option value="fixed">Fixed time</option>
         <option value="none">Don't show</option>
       </select>
       {rule.mode === 'offset' && (
-        <input className="input" style={{ width: '5rem' }} type="number" min={0} max={240} value={rule.offset ?? 10} onChange={(e) => onChange({ mode: 'offset', offset: Number(e.target.value) })} />
+        <input className="input" style={{ width: '5rem' }} type="number" min={0} max={240} disabled={disabled} value={rule.offset ?? 10} onChange={(e) => onChange({ mode: 'offset', offset: Number(e.target.value) })} />
       )}
       {rule.mode === 'fixed' && (
-        <input className="input" style={{ width: '8rem' }} type="time" value={rule.fixed ?? '13:30'} onChange={(e) => onChange({ mode: 'fixed', fixed: e.target.value })} />
+        <input className="input" style={{ width: '8rem' }} type="time" disabled={disabled} value={rule.fixed ?? '13:30'} onChange={(e) => onChange({ mode: 'fixed', fixed: e.target.value })} />
       )}
     </div>
   );

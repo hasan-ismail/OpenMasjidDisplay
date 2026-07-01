@@ -243,6 +243,8 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     showSeconds: o.showSeconds === undefined ? base?.showSeconds ?? false : bool(o.showSeconds, false),
     showFooter: o.showFooter === undefined ? base?.showFooter ?? true : bool(o.showFooter, true),
     showCelestial: o.showCelestial === undefined ? base?.showCelestial ?? true : bool(o.showCelestial, true),
+    bitrate720: o.bitrate720 === undefined ? base?.bitrate720 : intIn(o.bitrate720, base?.bitrate720 ?? 4000, 500, 20000),
+    bitrate1080: o.bitrate1080 === undefined ? base?.bitrate1080 : intIn(o.bitrate1080, base?.bitrate1080 ?? 8000, 500, 30000),
     showName: o.showName === undefined ? base?.showName ?? true : bool(o.showName, true),
     // backgroundImage + logoImage are managed only by the upload/delete endpoints, never trusted from the form body.
     backgroundImage: base?.backgroundImage ?? '',

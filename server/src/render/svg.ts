@@ -609,7 +609,11 @@ function celestialPos(times: PrayerTimes, nowHours: number, W: number, H: number
   const left = P + W * 0.08;
   const right = W - P - W * 0.08;
   const x = left + t * (right - left);
-  const y = H * 0.34 - Math.sin(t * Math.PI) * H * 0.2;
+  // Landscape: a wide arc across the upper sky (sits in the gaps between cards).
+  // Portrait has no such gaps, so keep it small and high near the very top, where it
+  // reads as a soft sky glow rather than a bright blob sitting on a card.
+  const portrait = H > W;
+  const y = portrait ? H * 0.05 - Math.sin(t * Math.PI) * H * 0.015 : H * 0.34 - Math.sin(t * Math.PI) * H * 0.2;
   return { isDay, x, y };
 }
 
@@ -670,9 +674,9 @@ function defs(p: Palette, hasImage: boolean, cel: Celestial, W: number, H: numbe
       <stop offset="100%" stop-color="${p.textDim}"/>
     </linearGradient>
     <linearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${hexToRgba(p.bg, 0.55)}"/>
-      <stop offset="50%" stop-color="${hexToRgba(p.bg, 0.35)}"/>
-      <stop offset="100%" stop-color="${hexToRgba(p.bg, 0.7)}"/>
+      <stop offset="0%" stop-color="${hexToRgba(p.bg, 0.62)}"/>
+      <stop offset="50%" stop-color="${hexToRgba(p.bg, 0.52)}"/>
+      <stop offset="100%" stop-color="${hexToRgba(p.bg, 0.8)}"/>
     </linearGradient>
     ${hasImage ? `<filter id="frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="14"/></filter>` : ''}
     <pattern id="khatam" width="58" height="58" patternUnits="userSpaceOnUse">
@@ -716,7 +720,7 @@ function sunburst(cx: number, cy: number, r: number): string {
  *  filter. The sun is a gentle warm orb with a faint corona + the lightest ray
  *  shimmer; the glow it casts onto the glass comes from #cglow + #litsheen. */
 function celestialBody(cel: Celestial, W: number, H: number): string {
-  const r = Math.min(W, H) * 0.04;
+  const r = Math.min(W, H) * (H > W ? 0.028 : 0.04);
   const cx = cel.x.toFixed(1);
   const cy = cel.y.toFixed(1);
   if (cel.isDay) {
@@ -963,15 +967,17 @@ function jumuahBar(b: Box, m: Model, c: Ctx): string {
   out.push(glass(b.x, b.y, b.w, b.h, clamp(Math.min(b.w, b.h) * 0.28, 8, 26), { fill: hexToRgba(c.p.gold, 0.06), stroke: hexToRgba(c.p.gold, 0.3) }));
   const pad = b.w * 0.03;
   const midY = b.y + b.h * 0.5;
-  const base = c.L.jumuah ?? "Jumu'ah";
+  const upper = (c.L.jumuah ?? "Jumu'ah").toUpperCase();
   const ar = c.lang !== 'ar' ? PRAYER_LABELS.ar.jumuah : '';
   // The label fits the left ~40%; the times share the right ~58%, each shrunk to its slot.
   const labelMax = b.w * 0.4;
   let lblSize = clamp(b.h * 0.34, 14, 40);
-  const labW = () => approxWidth(base.toUpperCase(), lblSize) + (ar ? b.w * 0.012 + approxWidth(ar, lblSize * 0.9) : 0);
+  // Include the label's letter-spacing (1.5/gap) so the Arabic gloss never overlaps it.
+  const enW = () => approxWidth(upper, lblSize) + (upper.length - 1) * 1.5;
+  const labW = () => enW() + (ar ? b.w * 0.02 + approxWidth(ar, lblSize * 0.9) : 0);
   if (labW() > labelMax) lblSize *= labelMax / labW();
-  out.push(text(b.x + pad, midY + lblSize * 0.34, base.toUpperCase(), { size: lblSize, fill: c.p.gold, family: FONT_DISPLAY, weight: 700, anchor: 'start', letter: 1.5, editId: 'label.jumuah' }));
-  if (ar) out.push(text(b.x + pad + approxWidth(base.toUpperCase(), lblSize) + b.w * 0.012, midY + lblSize * 0.34, ar, { size: lblSize * 0.9, fill: hexToRgba(c.p.gold, 0.8), family: FONT_ARABIC, weight: 600, anchor: 'start' }));
+  out.push(text(b.x + pad, midY + lblSize * 0.34, upper, { size: lblSize, fill: c.p.gold, family: FONT_DISPLAY, weight: 700, anchor: 'start', letter: 1.5, editId: 'label.jumuah' }));
+  if (ar) out.push(text(b.x + pad + enW() + b.w * 0.02, midY + lblSize * 0.34, ar, { size: lblSize * 0.9, fill: hexToRgba(c.p.gold, 0.8), family: FONT_ARABIC, weight: 600, anchor: 'start' }));
   const n = m.jumuah.length;
   const zoneX = b.x + b.w * 0.42;
   const zoneW = b.x + b.w - pad - zoneX;
@@ -1026,17 +1032,17 @@ function layoutReference(a: Box, m: Model, c: Ctx): string {
   const jbH = m.jumuah.length ? clamp(a.h * 0.11, 42, 110) : 0;
   const bodyBottom = a.y + a.h - (jbH ? jbH + gap : 0);
   if (a.w < a.h) {
-    // Portrait: stack header, clock, ring, table, Jumu'ah bar.
+    // Portrait: header on top; the clock and the countdown ring share ONE row side by
+    // side; the prayer table fills the rest (taller); Jumu'ah bar along the bottom.
     let y = a.y;
-    const hH = a.h * 0.09;
+    const hH = a.h * 0.08;
     out.push(panelHeader({ x: a.x, y, w: a.w, h: hH }, c));
     y += hH + gap;
-    const cH = a.h * 0.14;
-    out.push(panelClock({ x: a.x, y, w: a.w, h: cH }, c, 'start'));
-    y += cH + gap;
-    const rH = a.h * 0.3;
-    out.push(panelRing({ x: a.x, y, w: a.w, h: rH }, c));
-    y += rH + gap;
+    const rowH = a.h * 0.26;
+    const half = (a.w - gap) / 2;
+    out.push(panelClock({ x: a.x, y, w: half, h: rowH }, c, 'start'));
+    out.push(panelRing({ x: a.x + half + gap, y, w: half, h: rowH }, c));
+    y += rowH + gap;
     out.push(panelTable({ x: a.x, y, w: a.w, h: bodyBottom - y }, m, c));
     if (jbH) out.push(jumuahBar({ x: a.x, y: a.y + a.h - jbH, w: a.w, h: jbH }, m, c));
     return out.join('');
@@ -1400,14 +1406,20 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   } else {
     out.push(rect(0, 0, W, H, 0, 'url(#scene)'));
   }
-  // The sun/moon and the glow it casts can be turned off (showCelestial); the subtle
-  // khatam pattern always stays.
+  // The sun/moon and the glow it casts can be turned off (showCelestial).
   if (tt.showCelestial !== false) {
     out.push(rect(0, 0, W, H, 0, 'url(#cglow)')); // light from the sun/moon
-    out.push(celestialBody(cel, W, H)); // the sun or moon itself
-    out.push(lightBeams(cel, W, H)); // soft shafts falling over the scene
+    // Draw the hard disc + light shafts only in landscape, where they sit in the open
+    // sky between the cards; portrait has no such gap, so keep just the soft glow (no
+    // bright disc blobbing on a card).
+    if (W >= H) {
+      out.push(celestialBody(cel, W, H)); // the sun or moon itself
+      out.push(lightBeams(cel, W, H)); // soft shafts falling over the scene
+    }
   }
-  out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
+  // The geometric khatam texture belongs to the themed scene only — never lay it over a
+  // custom background photo (the scrim already handles the photo's readability).
+  if (!hasImage) out.push(rect(0, 0, W, H, 0, 'url(#khatam)'));
 
   // ── Full-takeover overlays (drawn over the scene, suppress the normal layout
   //    AND the scrolling ticker — see activeTickerString) ──────────────────────

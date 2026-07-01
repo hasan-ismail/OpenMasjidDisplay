@@ -98,6 +98,8 @@ function migrateTimetable(t: Timetable): Timetable {
     showFooter: t.showFooter ?? true,
     showCelestial: t.showCelestial ?? true,
     showName: t.showName ?? true,
+    bitrate720: t.bitrate720,
+    bitrate1080: t.bitrate1080,
     location: t.location ?? '',
     hijriOffset: t.hijriOffset ?? 0,
     gregorianOffset: t.gregorianOffset ?? 0,
