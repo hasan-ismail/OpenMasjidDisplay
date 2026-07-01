@@ -51,6 +51,7 @@ export interface Timetable {
   layout: TimetableLayout;
   layoutCarousel: boolean;
   masjidName: string;
+  location: string;
   latitude: number | null;
   longitude: number | null;
   method: CalcMethod;
@@ -72,6 +73,7 @@ export interface Timetable {
   showSeconds: boolean;
   showFooter: boolean;
   showCelestial: boolean;
+  showName: boolean;
   backgroundImage: string;
   logoImage: string;
   labels?: Record<string, string>;

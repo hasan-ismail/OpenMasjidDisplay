@@ -711,7 +711,11 @@ export function createApi(deps: Deps) {
       // Live preview of unsaved edits (POST the form body) or the stored one (GET by id).
       if (pathname === '/api/preview' && method === 'POST') {
         const body = await readBody(req);
-        const tt = normTimetable(body);
+        // Base the preview on the STORED timetable so fields the validator strips
+        // (managed by dedicated endpoints — notably the CSV-imported iqamahYear) still
+        // appear in the live preview of unsaved edits.
+        const pvBase = typeof body.id === 'string' && body.id ? store.db.timetables.find((t) => t.id === body.id) : undefined;
+        const tt = normTimetable(body, pvBase);
         // Background + logo are stripped by the validator, so take them from the raw
         // body — an unsaved upload should still appear in the live preview.
         const bgFile = typeof body.backgroundImage === 'string' ? body.backgroundImage : '';
@@ -725,7 +729,8 @@ export function createApi(deps: Deps) {
       // Click-to-edit regions for the live editor (fractional coordinates).
       if (pathname === '/api/preview-meta' && method === 'POST') {
         const body = await readBody(req);
-        const tt = normTimetable(body);
+        const pvBase = typeof body.id === 'string' && body.id ? store.db.timetables.find((t) => t.id === body.id) : undefined;
+        const tt = normTimetable(body, pvBase);
         const hotspots = await renderPreviewMeta(tt, Date.now());
         return sendJson(res, 200, { hotspots });
       }

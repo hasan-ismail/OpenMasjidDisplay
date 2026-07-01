@@ -12,12 +12,6 @@ interface Props {
 }
 
 const METHODS = ['MWL', 'ISNA', 'Egypt', 'Makkah', 'Karachi', 'Custom'] as const;
-const LAYOUTS: { id: TimetableLayout; label: string }[] = [
-  { id: 'centered', label: 'Columns' },
-  { id: 'clockTop', label: 'Spotlight' },
-  { id: 'split', label: 'Sidebar' },
-];
-
 export function Timetables({ state, refetch }: Props) {
   const toast = useToast();
   const [edit, setEdit] = useState<Timetable | 'new' | null>(null);
@@ -132,11 +126,12 @@ function toForm(tt: Timetable | null, state: AppState): Form {
     id: '', name: 'New timetable', themeId: 'emerald', accent: undefined, textColor: '',
     orientation: 'landscape', quality: state.settings.defaultQuality, layout: 'centered', layoutCarousel: false,
     masjidName: state.timetables[0]?.masjidName ?? 'Our Masjid',
+    location: '',
     latitude: '', longitude: '',
     method: 'MWL', fajrAngle: 18, ishaAngle: 17, asrMadhab: 'Hanafi', timezone: state.settings.scheduleTimezone ?? '',
     timeFormat: '12h', language: 'en', hijriOffset: 0, gregorianOffset: 0,
     iqamah: { fajr: { mode: 'offset', offset: 20 }, dhuhr: { mode: 'offset', offset: 10 }, asr: { mode: 'offset', offset: 10 }, maghrib: { mode: 'offset', offset: 5 }, isha: { mode: 'offset', offset: 10 } },
-    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true, showCelestial: true,
+    jumuah: ['13:30'], showSunrise: true, showCountdown: true, showDates: true, showLogo: true, showSeconds: false, showFooter: true, showCelestial: true, showName: true,
     backgroundImage: '', logoImage: '', footerNote: '', tickerSpeed: 5, createdAt: '',
   };
 }
@@ -246,6 +241,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   // Click-to-edit in the live preview: rename a prayer, the masjid name or footer.
   const editLabel = (id: string, value: string) => {
     if (id === 'masjidName') set('masjidName', value || 'Our Masjid');
+    else if (id === 'location') set('location', value);
     else if (id === 'footerNote') set('footerNote', value);
     else if (id.startsWith('label.')) {
       const key = id.slice(6);
@@ -357,20 +353,7 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
             <Field label="Name (for you)"><input className="input" value={f.name} onChange={(e) => set('name', e.target.value)} /></Field>
             <Field label="Masjid name (on screen)"><input className="input" value={f.masjidName} onChange={(e) => set('masjidName', e.target.value)} /></Field>
           </div>
-
-          <Field label="Layout">
-            <div className="chips">
-              {LAYOUTS.map((l) => (
-                <button key={l.id} type="button" className={`chip${f.layout === l.id && !f.layoutCarousel ? ' is-active' : ''}`} onClick={() => set('layout', l.id)}>{l.label}</button>
-              ))}
-            </div>
-          </Field>
-          <div className="toggle-row row-between" style={{ marginBlockEnd: '0.9rem' }}>
-            <span className="label" style={{ margin: 0 }}>
-              Rotate layouts over the day <span className="hint">— cycles columns / spotlight / sidebar every 5 min (prevents TV burn-in)</span>
-            </span>
-            <Toggle checked={f.layoutCarousel} onChange={(v) => set('layoutCarousel', v)} label="Rotate layouts over the day" />
-          </div>
+          <Field label="Location (under the name)" hint="e.g. Lansdale, Pennsylvania — leave blank to hide"><input className="input" value={f.location} onChange={(e) => set('location', e.target.value)} /></Field>
 
           <div className="grid2">
             <Field label="Latitude" hint="e.g. 40.748222"><input className="input" inputMode="decimal" value={f.latitude} onChange={(e) => set('latitude', e.target.value)} /></Field>
@@ -518,7 +501,8 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
 
           <h3 className="section-title">Show on screen</h3>
           <div className="toggle-list">
-            <ToggleRow label="Logo & masjid name" checked={f.showLogo} onChange={(v) => set('showLogo', v)} />
+            <ToggleRow label="Logo" checked={f.showLogo} onChange={(v) => set('showLogo', v)} />
+            <ToggleRow label="Masjid name" checked={f.showName} onChange={(v) => set('showName', v)} />
             <ToggleRow label="Hijri & Gregorian dates" checked={f.showDates} onChange={(v) => set('showDates', v)} />
             <ToggleRow label="Countdown to next prayer" checked={f.showCountdown} onChange={(v) => set('showCountdown', v)} />
             <ToggleRow label="Seconds on the clock" checked={f.showSeconds} onChange={(v) => set('showSeconds', v)} />
@@ -982,7 +966,6 @@ function IqamahYearEditor({ tt, existingRows, onSaved }: { tt: Timetable; existi
   const [busy, setBusy] = useState(false);
   // True when this timetable already had per-day times when the editor opened (e.g.
   // imported from a CSV) — saving manual edits then overrides them, so we confirm first.
-  const [hadExisting] = useState(() => (existingRows ?? 0) > 0);
   const [confirmOverride, setConfirmOverride] = useState(false);
   const PR = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -1010,8 +993,10 @@ function IqamahYearEditor({ tt, existingRows, onSaved }: { tt: Timetable; existi
       setBusy(false);
     }
   };
-  // Warn before overriding times that were already imported/saved for this timetable.
-  const save = () => { if (hadExisting) setConfirmOverride(true); else void doSave(); };
+  // Warn before overriding times already imported/saved for this timetable. Read the
+  // count LIVE (not captured at mount) so importing a CSV while the editor is open
+  // still triggers the warning.
+  const save = () => { if ((existingRows ?? 0) > 0) setConfirmOverride(true); else void doSave(); };
   return (
     <>
     <div className="iqyear">

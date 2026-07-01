@@ -125,6 +125,8 @@ export interface Timetable {
   /** rotate through the layouts over the day to avoid screen burn-in */
   layoutCarousel: boolean;
   masjidName: string;
+  /** optional location line under the name (e.g. "Lansdale, Pennsylvania"); '' hides it */
+  location: string;
   latitude: number | null;
   longitude: number | null;
   method: CalcMethod;
@@ -157,6 +159,8 @@ export interface Timetable {
   showFooter: boolean;
   /** show the sun/moon arcing across the sky (and the soft glow it casts on the glass) */
   showCelestial: boolean;
+  /** show the masjid name text (turn off for a logo-only header) */
+  showName: boolean;
   /** filename of an uploaded custom background under /data/uploads ('' = themed scene) */
   backgroundImage: string;
   /** filename of an uploaded masjid logo under /data/uploads ('' = the built-in mark) */

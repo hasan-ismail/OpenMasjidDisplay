@@ -219,6 +219,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     layout: oneOf(o.layout, ['centered', 'clockTop', 'split'] as const, base?.layout ?? 'centered'),
     layoutCarousel: o.layoutCarousel === undefined ? base?.layoutCarousel ?? false : bool(o.layoutCarousel, false),
     masjidName: str(o.masjidName, base?.masjidName ?? 'Our Masjid', 80) || 'Our Masjid',
+    location: str(o.location, base?.location ?? '', 80),
     latitude: o.latitude === undefined ? base?.latitude ?? null : geoOrNull(o.latitude, -90, 90),
     longitude: o.longitude === undefined ? base?.longitude ?? null : geoOrNull(o.longitude, -180, 180),
     method: oneOf(o.method, METHODS_LIST, base?.method ?? 'MWL'),
@@ -241,6 +242,7 @@ export function normTimetable(input: unknown, base?: Timetable): Timetable {
     showSeconds: o.showSeconds === undefined ? base?.showSeconds ?? false : bool(o.showSeconds, false),
     showFooter: o.showFooter === undefined ? base?.showFooter ?? true : bool(o.showFooter, true),
     showCelestial: o.showCelestial === undefined ? base?.showCelestial ?? true : bool(o.showCelestial, true),
+    showName: o.showName === undefined ? base?.showName ?? true : bool(o.showName, true),
     // backgroundImage + logoImage are managed only by the upload/delete endpoints, never trusted from the form body.
     backgroundImage: base?.backgroundImage ?? '',
     logoImage: base?.logoImage ?? '',

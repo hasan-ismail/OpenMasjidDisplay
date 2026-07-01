@@ -21,6 +21,9 @@ export interface Palette {
   border: string;
   /** stroke colour for the faint geometric pattern */
   pattern: string;
+  /** true for light (parchment) themes — the renderer flips the glass fill/border to
+   *  dark-on-light so the cards read correctly over a bright background */
+  light?: boolean;
 }
 
 export interface ThemePreset {
@@ -38,6 +41,16 @@ export const THEMES: ThemePreset[] = [
       primary: '#1fa37a', primarySoft: '#2bbf90', gold: '#d4af37', goldSoft: '#e6c768',
       text: '#eaf3ee', textDim: '#9db5aa', textFaint: '#5f786d',
       border: 'rgba(255,255,255,0.06)', pattern: '#1fa37a',
+    },
+  },
+  {
+    id: 'light',
+    label: 'Parchment (light)',
+    palette: {
+      bg: '#e7eae1', bg2: '#f3f5ee', surface: '#ffffff', surface2: '#f6f8f2',
+      primary: '#1fa37a', primarySoft: '#15805c', gold: '#b8860b', goldSoft: '#9c7209',
+      text: '#233028', textDim: '#5a6b62', textFaint: '#8c988f',
+      border: 'rgba(30,50,40,0.12)', pattern: '#8a8266', light: true,
     },
   },
   {
