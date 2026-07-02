@@ -34,8 +34,10 @@ export interface Announcements {
 }
 export interface TickerMessage { id: string; text: string; start: string; end: string }
 export interface Ticker { enabled: boolean; messages: TickerMessage[] }
-export interface HadithItem { ar: string; en: string }
-export interface SalahHadith { enabled: boolean; minutes: number; items: HadithItem[] }
+export interface HadithItem { ar: string; en: string; cite?: string }
+export interface SalahHadith { enabled: boolean; minutes: number; items: HadithItem[]; disabledDefaults?: string[] }
+/** A built-in hadith the display ships with (English + citation shown in the checklist). */
+export interface HadithDefault { id: string; en: string; cite: string }
 export interface ProhibitedNotice { enabled: boolean; minutes: number; ticker?: boolean }
 export interface IqamahCountdown { enabled: boolean; minutes: number }
 export type AdhanOffsets = Partial<Record<'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha', number>>;
@@ -174,6 +176,8 @@ export interface AppState {
   tvs: Tv[];
   schedules: ScheduleRule[];
   themes: ThemePreset[];
+  /** built-in ahadith on Salāh (for the enable/disable checklist) */
+  hadithDefaults: HadithDefault[];
   statuses: TvStatus[];
   /** The screen-facing RTSP port. The link's host is filled in by the browser. */
   rtsp: { port: number; transport: string };

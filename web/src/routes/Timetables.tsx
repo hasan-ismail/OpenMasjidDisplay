@@ -325,6 +325,14 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
   const addHadith = () => setSh({ items: [...sh.items, { ar: '', en: '' }] });
   const setHadith = (i: number, patch: Partial<HadithItem>) => setSh({ items: sh.items.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const delHadith = (i: number) => setSh({ items: sh.items.filter((_, j) => j !== i) });
+  // Built-in ahadith: all on unless their id is in disabledDefaults.
+  const disabledDefaults = sh.disabledDefaults ?? [];
+  const defaultOn = (id: string) => !disabledDefaults.includes(id);
+  const toggleDefault = (id: string, on: boolean) =>
+    setSh({ disabledDefaults: on ? disabledDefaults.filter((x) => x !== id) : [...disabledDefaults, id] });
+  const setAllDefaults = (on: boolean) =>
+    setSh({ disabledDefaults: on ? [] : state.hadithDefaults.map((h) => h.id) });
+  const defaultsOnCount = state.hadithDefaults.filter((h) => defaultOn(h.id)).length;
   const pn: ProhibitedNotice = f.prohibitedNotice ?? { enabled: false, minutes: 10 };
   const setPn = (patch: Partial<ProhibitedNotice>) => set('prohibitedNotice', { ...pn, ...patch });
   const ic: IqamahCountdown = f.iqamahCountdown ?? { enabled: false, minutes: 5 };
@@ -709,7 +717,32 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
               <Field label="Show for (minutes after each Iqamah)" hint="How long the hadith stays on screen once a prayer's Iqamah time arrives.">
                 <input className="input" type="number" min={1} max={60} value={sh.minutes} onChange={(e) => setSh({ minutes: Number(e.target.value) })} />
               </Field>
-              <p className="hint" style={{ marginBlockEnd: '0.4rem' }}>Add a few — the screen rotates through them. Fill in Arabic, English, or both.</p>
+
+              {state.hadithDefaults.length > 0 && (
+                <>
+                  <div className="row-between" style={{ marginBlockEnd: '0.3rem' }}>
+                    <span className="label" style={{ margin: 0 }}>Built-in ahadith on Salāh <span className="hint">({defaultsOnCount} of {state.hadithDefaults.length} on)</span></span>
+                    <span style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button type="button" className="btn btn--ghost btn--sm" onClick={() => setAllDefaults(true)}>All on</button>
+                      <button type="button" className="btn btn--ghost btn--sm" onClick={() => setAllDefaults(false)}>All off</button>
+                    </span>
+                  </div>
+                  <p className="hint" style={{ marginBlockStart: 0, marginBlockEnd: '0.4rem' }}>Turn off any you don't want. (Sourced from the Madani Academy “Salah Workshop”.)</p>
+                  <div className="list" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
+                    {state.hadithDefaults.map((h) => (
+                      <div key={h.id} className="toggle-row row-between" style={{ alignItems: 'flex-start', gap: '0.6rem', padding: '0.4rem 0' }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', opacity: defaultOn(h.id) ? 1 : 0.5 }}>{h.en}</span>
+                          <span className="hint">— {h.cite}</span>
+                        </span>
+                        <Toggle checked={defaultOn(h.id)} onChange={(v) => toggleDefault(h.id, v)} label={`Toggle: ${h.cite}`} />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <p className="hint" style={{ marginBlockStart: '0.8rem', marginBlockEnd: '0.4rem' }}>Your own ahadith — the screen rotates through these and the built-ins above. Fill in Arabic, English, or both.</p>
               <div className="list">
                 {sh.items.map((it, i) => (
                   <div key={i} className="hadith-row">

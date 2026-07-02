@@ -147,13 +147,19 @@ function normSalahHadith(v: unknown, base?: SalahHadith): SalahHadith | undefine
       // Legacy items were plain strings (English only) — keep them working.
       if (typeof x === 'string') return { ar: '', en: str(x, '', 800) };
       const io = asObj(x);
-      return { ar: str(io.ar, '', 800), en: str(io.en, '', 800) };
+      const cite = str(io.cite, '', 120).trim();
+      return { ar: str(io.ar, '', 800), en: str(io.en, '', 800), ...(cite ? { cite } : {}) };
     })
     .filter((h) => h.ar.trim() !== '' || h.en.trim() !== '');
+  // ids of built-in ahadith the admin turned off (kept as-is; unknown ids are harmless).
+  const disabledDefaults = Array.isArray(o.disabledDefaults)
+    ? o.disabledDefaults.filter((x): x is string => typeof x === 'string').slice(0, 200)
+    : base?.disabledDefaults;
   return {
     enabled: bool(o.enabled, base?.enabled ?? false),
     minutes: intIn(o.minutes, base?.minutes ?? 10, 1, 60),
     items,
+    ...(disabledDefaults && disabledDefaults.length ? { disabledDefaults } : {}),
   };
 }
 function normProhibited(v: unknown, base?: ProhibitedNotice): ProhibitedNotice | undefined {

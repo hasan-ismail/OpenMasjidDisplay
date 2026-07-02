@@ -74,16 +74,21 @@ export interface Ticker {
 export interface HadithItem {
   ar: string;
   en: string;
+  /** short source attribution shown under the text (e.g. "al-Tirmidhī:413") */
+  cite?: string;
 }
 
-/** During salah (the minutes after Iqāmah), show a hadith over a dimmed background.
- *  Admins add several; the display rotates through them. */
+/** During salah (the minutes after Iqāmah), show a hadith over a dimmed background. The
+ *  display rotates through a built-in library of ahadith on Salāh plus any the admin
+ *  adds. Individual built-ins can be turned off (see defaultHadith.ts). */
 export interface SalahHadith {
   enabled: boolean;
   /** how many minutes after each Iqāmah to show the hadith overlay */
   minutes: number;
-  /** the hadith to rotate through (each with Arabic and/or English) */
+  /** the admin's own hadith (each with Arabic and/or English) */
   items: HadithItem[];
+  /** ids of built-in ahadith the admin has turned OFF (all built-ins are on by default) */
+  disabledDefaults?: string[];
 }
 
 /** A full-screen notice during the makrūh "prohibited" window before Dhuhr (zawāl),

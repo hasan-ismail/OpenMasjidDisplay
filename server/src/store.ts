@@ -78,6 +78,9 @@ function seededTimetable(): Timetable {
     showName: true,
     backgroundImage: '',
     logoImage: '',
+    // Show the built-in library of ahadith on Salāh during prayer out of the box (the
+    // admin can turn individual ones off or add their own in Settings).
+    salahHadith: { enabled: true, minutes: 15, items: [] },
     footerNote: '',
     createdAt: new Date().toISOString(),
   };

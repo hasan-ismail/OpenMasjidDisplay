@@ -12,8 +12,9 @@
  * per-element toggles are honoured; a carousel option rotates the layout over the
  * day to avoid screen burn-in. No sacred/Arabic text appears in decorative chrome.
  */
-import type { Timetable, HadithItem, TimeFormat, Lang } from '../types';
+import type { Timetable, HadithItem, SalahHadith, TimeFormat, Lang } from '../types';
 import { getPalette, type Palette } from './theme';
+import { DEFAULT_SALAH_HADITH } from './defaultHadith';
 import {
   prayerTimes,
   iqamahHours,
@@ -1437,6 +1438,14 @@ function adhanPopupView(row: Row, c: Ctx, W: number, H: number): string {
   return out.join('');
 }
 
+/** The ahadith to rotate through during salah: the built-in library (minus any the admin
+ *  turned off) followed by the admin's own additions. */
+function hadithPool(sh: SalahHadith): HadithItem[] {
+  const off = new Set(sh.disabledDefaults ?? []);
+  const defaults: HadithItem[] = DEFAULT_SALAH_HADITH.filter((d) => !off.has(d.id)).map((d) => ({ ar: d.ar, en: d.en, cite: d.cite }));
+  return [...defaults, ...sh.items];
+}
+
 /** Which full-screen overlay (if any) is active right now. Precedence: the zawāl
  *  notice, then the pre-Iqāmah countdown, then the during-salah hadith. */
 function activeOverlay(tt: Timetable, m: Model, nowHours: number, now: Date): Overlay | null {
@@ -1455,14 +1464,17 @@ function activeOverlay(tt: Timetable, m: Model, nowHours: number, now: Date): Ov
   }
   // 3) Hadith during salah (the minutes after each Iqāmah), rotating every ~15s.
   const sh = tt.salahHadith;
-  if (sh?.enabled && sh.items.length) {
-    const win = Math.max(1, sh.minutes) / 60;
-    const inSalah = m.rows.some(
-      (r) => r.iqamah != null && r.iqamah <= nowHours && nowHours < r.iqamah + win,
-    );
-    if (inSalah) {
-      const idx = Math.floor(now.getTime() / 15000) % sh.items.length;
-      return { kind: 'hadith', item: sh.items[idx] };
+  if (sh?.enabled) {
+    const pool = hadithPool(sh);
+    if (pool.length) {
+      const win = Math.max(1, sh.minutes) / 60;
+      const inSalah = m.rows.some(
+        (r) => r.iqamah != null && r.iqamah <= nowHours && nowHours < r.iqamah + win,
+      );
+      if (inSalah) {
+        const idx = Math.floor(now.getTime() / 15000) % pool.length;
+        return { kind: 'hadith', item: pool[idx] };
+      }
     }
   }
   return null;
@@ -1506,11 +1518,16 @@ function salahHadithView(item: HadithItem, now: Date, clock: ClockText, p: Palet
     lines = wrapLines(content, fs, maxW, 14);
   }
   const lh = fs * lineFactor;
-  let ly = cy - (lines.length * lh) / 2 + fs * (isArabic ? 0.95 : 0.75);
+  const cite = (item.cite ?? '').trim();
+  // Reserve a little room at the bottom for the citation so the text block sits centred
+  // above it rather than dead-centre.
+  let ly = cy - (lines.length * lh) / 2 + fs * (isArabic ? 0.95 : 0.75) - (cite ? fs * 0.5 : 0);
   for (const ln of lines) {
     out.push(text(cx, ly, ln, { size: fs, fill: p.text, family, weight: 500, anchor: 'middle' }));
     ly += lh;
   }
+  // Source attribution, small and dim, under the hadith.
+  if (cite) out.push(text(cx, ly + fs * 0.5, `— ${cite}`, { size: clamp(fs * 0.5, 13, 30), fill: p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'middle', letter: 0.5 }));
 
   // Keep the current time on screen (small, top corner) so the display still tells
   // the time while the congregation prays.
