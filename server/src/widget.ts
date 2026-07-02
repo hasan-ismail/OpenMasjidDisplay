@@ -19,7 +19,7 @@ function esc(s: string): string {
 
 /** The self-contained HTML page. `data` seeds the first paint; `jsonPath` is the
  *  (relative) URL the page fetches for other days/weeks and to keep the countdown live. */
-export function renderWidgetHtml(data: WidgetPayload, jsonPath: string): string {
+export function renderWidgetHtml(data: WidgetPayload, jsonPath: string, logo?: string | null): string {
   return `<!doctype html>
 <html lang="${esc(data.language)}"${data.rtl ? ' dir="rtl"' : ''}>
 <head>
@@ -46,6 +46,7 @@ export function renderWidgetHtml(data: WidgetPayload, jsonPath: string): string 
   /* Header */
   .head { display:flex; align-items:center; gap:12px; padding:16px; border-bottom:1px solid var(--line); }
   .mark { flex:0 0 auto; width:38px; height:38px; color:var(--primary); }
+  img.mark { object-fit:contain; border-radius:8px; }
   .h-name { font-size:1.12rem; font-weight:800; letter-spacing:.2px; line-height:1.15; }
   .h-date { font-size:.78rem; color:var(--dim); margin-top:2px; }
   /* Next line */
@@ -108,14 +109,21 @@ export function renderWidgetHtml(data: WidgetPayload, jsonPath: string): string 
   function fmtCd(sec){ if(sec<0)sec=0; var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60; function p(n){return (n<10?'0':'')+n;}
     return h>0 ? h+'h '+p(m)+'m' : m>0 ? m+'m '+p(s)+'s' : s+'s'; }
 
+  // The masjid's uploaded logo (data URI), embedded once at render time. Falls
+  // back to the built-in dome mark when the masjid hasn't uploaded a logo.
+  var LOGO = ${JSON.stringify(logo || '')};
   var mark = '<svg class="mark" viewBox="0 0 48 48" fill="currentColor" aria-hidden="true">'+
     '<path d="M24 3c1.6 0 3 .6 4 1.6A5.6 5.6 0 0 0 24 14a5.6 5.6 0 0 0 4-1.4A5.8 5.8 0 0 1 24 3Z"/>'+
     '<path d="M12 26c0-8 5.4-12 12-12s12 4 12 12v2H12v-2Z" opacity=".9"/>'+
     '<path d="M10 28h28v15H10V28Zm10 15V36a4 4 0 0 1 8 0v7h-8Z" opacity=".55"/></svg>';
+  function markEl(){
+    if(LOGO){ var im=E('img','mark'); im.src=LOGO; im.alt=''; return im; }
+    var mk=E('div'); mk.innerHTML=mark; return mk.firstChild;
+  }
 
   function todayCard(){
     var f=d.focus, card=E('div','card');
-    var head=E('div','head'); var mk=E('div'); mk.innerHTML=mark; head.appendChild(mk.firstChild);
+    var head=E('div','head'); head.appendChild(markEl());
     var ht=E('div'); ht.appendChild(E('div','h-name', d.masjidName));
     var dt=(f.gregorian||'')+(f.hijri?'  ·  '+f.hijri:''); if(dt.trim()) ht.appendChild(E('div','h-date', dt));
     head.appendChild(ht); card.appendChild(head);

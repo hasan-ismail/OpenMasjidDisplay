@@ -440,7 +440,7 @@ interface Model {
   parts: ReturnType<typeof localParts>;
   times: PrayerTimes;
   rows: Row[];
-  activeKey: string;
+  activeKey: string | null;
   nextKey: string;
   nextHours: number;
   /** true when nextHours/nextKey point at the CURRENT prayer's Iqāmah (its adhan has
@@ -521,6 +521,11 @@ function buildModel(tt: Timetable, now: Date): Model {
     nextHours = inWindow.iqamah!;
     countdownToIqamah = true;
   }
+
+  // A prayer's time is over once the next one begins — for Fajr that's Sunrise, so stop
+  // highlighting Fajr from Sunrise onward (until then no prayer is "active", which is
+  // correct: the ring just counts down to Dhuhr).
+  if (activeKey === 'fajr' && !countdownToIqamah && nowHours >= times.sunrise) activeKey = null;
 
   for (const r of rows) {
     if (r.key === activeKey) r.active = true;
@@ -946,6 +951,9 @@ interface Ctx {
   showName: boolean;
   showDates: boolean;
   showCountdown: boolean;
+  /** Active zawāl (pre-Dhuhr) prohibited-to-pray window — the ring reframes itself as a
+   *  "Prohibited time" notice counting down to when prayer is allowed again (Dhuhr). */
+  prohibited?: boolean;
 }
 
 /** Brand panel: logo, masjid name, and a small uppercase location line under it. */
@@ -988,11 +996,51 @@ function panelClock(b: Box, c: Ctx, align: 'start' | 'end' = 'end'): string {
   const out: string[] = [];
   out.push(glass(b.x, b.y, b.w, b.h, clamp(Math.min(b.w, b.h) * 0.12, 10, 30), { raised: true }));
   const pad = b.w * 0.07;
-  const edge = align === 'end' ? b.x + b.w - pad : b.x + pad;
   const showDates = c.showDates && (!!c.greg || !!c.hij);
+  const markStr = c.showSeconds ? c.secStr : c.clock.period || '';
+
+  // Wide, short panels (the landscape top clock): time on the LEFT, the date block on
+  // the RIGHT at a comfortable size — fills the space instead of leaving it empty.
+  if (showDates && b.w > b.h * 1.9) {
+    const cy = b.y + b.h * 0.52;
+    const timeMax = b.w * 0.46;
+    let ts = clamp(b.h * 0.52, 30, 160);
+    const needT = () => approxWidth(c.clock.time, ts) + (markStr ? ts * 0.1 + approxWidth(markStr, ts * 0.3) : 0);
+    if (needT() > timeMax) ts *= timeMax / needT();
+    const ss = ts * 0.3;
+    const tBase = cy + ts * 0.34;
+    const leftX = b.x + pad;
+    out.push(text(leftX, tBase, c.clock.time, { size: ts, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'start', letter: -ts * 0.01, blink: true }));
+    const markX = leftX + approxWidth(c.clock.time, ts) + ts * 0.1;
+    if (c.showSeconds) out.push(text(markX, tBase - ts * 0.44, c.secStr, { size: ss, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'start' }));
+    if (c.clock.period) out.push(text(markX, tBase - (c.showSeconds ? 0 : ts * 0.02), c.clock.period, { size: ss, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: 'start' }));
+    const rightX = b.x + b.w - pad;
+    const dateMax = b.w - timeMax - pad * 2.5;
+    // Split the long Gregorian line ("Wednesday, January 7, 2026") on its first comma
+    // into weekday + date so each line can be larger and the block fills the panel's
+    // height instead of floating small in empty space. (No comma → keep one line.)
+    const gi = c.greg.indexOf(',');
+    const gLines = c.greg ? (gi > 0 ? [c.greg.slice(0, gi), c.greg.slice(gi + 1).trim()] : [c.greg]) : [];
+    const lines = [
+      ...gLines.map((t) => ({ t, gold: false })),
+      ...(c.hij ? [{ t: c.hij, gold: true }] : []),
+    ];
+    let ds = clamp(b.h * 0.24, 16, 44);
+    const widest = Math.max(1, ...lines.map((l) => approxWidth(l.t, ds)));
+    if (widest > dateMax) ds *= dateMax / widest;
+    const lh = ds * 1.3;
+    let y = cy - ((lines.length - 1) * lh) / 2 + ds * 0.34;
+    for (const ln of lines) {
+      out.push(text(rightX, y, ln.t, { size: ds * (ln.gold ? 0.98 : 1), fill: ln.gold ? c.p.goldSoft : c.p.textDim, family: FONT_DISPLAY, anchor: 'end' }));
+      y += lh;
+    }
+    return out.join('');
+  }
+
+  // Narrow/tall panels: time (top) + dates (below), hugging the leading/trailing edge.
+  const edge = align === 'end' ? b.x + b.w - pad : b.x + pad;
   let ts = clamp(b.h * (showDates ? 0.42 : 0.6), 28, 150);
   const avail = b.w - 2 * pad;
-  const markStr = c.showSeconds ? c.secStr : c.clock.period || '';
   const fit = () => approxWidth(c.clock.time, ts) + (markStr ? ts * 0.1 + approxWidth(markStr, ts * 0.3) : 0);
   if (fit() > avail) ts *= avail / fit();
   const ss = ts * 0.3;
@@ -1000,17 +1048,15 @@ function panelClock(b: Box, c: Ctx, align: 'start' | 'end' = 'end'): string {
   const gap = markStr ? ts * 0.1 : 0;
   const timeW = approxWidth(c.clock.time, ts);
   const tBase = b.y + b.h * (showDates ? 0.4 : 0.62);
-  // Time, then the small stacked seconds/AM-PM marker on its trailing side; the whole
-  // block hugs the panel's leading or trailing edge per `align`.
   const timeX = align === 'end' ? edge - mW - gap : edge;
   const markX = align === 'end' ? edge : edge + timeW + gap;
   out.push(text(timeX, tBase, c.clock.time, { size: ts, fill: 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: align, letter: -ts * 0.01, blink: true }));
   if (c.showSeconds) out.push(text(markX, tBase - ts * 0.44, c.secStr, { size: ss, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: align }));
   if (c.clock.period) out.push(text(markX, tBase - (c.showSeconds ? 0 : ts * 0.02), c.clock.period, { size: ss, fill: c.p.textDim, family: FONT_DISPLAY, weight: 700, anchor: align }));
   if (showDates) {
-    const ds = clamp(b.h * 0.1, 11, 24);
-    if (c.greg) out.push(text(edge, b.y + b.h * 0.66, c.greg, { size: ds, fill: c.p.textDim, family: FONT_DISPLAY, anchor: align }));
-    if (c.hij) out.push(text(edge, b.y + b.h * 0.84, c.hij, { size: ds * 0.98, fill: c.p.goldSoft, family: FONT_DISPLAY, anchor: align }));
+    const ds = clamp(b.h * 0.11, 12, 26);
+    if (c.greg) out.push(text(edge, b.y + b.h * 0.68, c.greg, { size: ds, fill: c.p.textDim, family: FONT_DISPLAY, anchor: align }));
+    if (c.hij) out.push(text(edge, b.y + b.h * 0.86, c.hij, { size: ds * 0.98, fill: c.p.goldSoft, family: FONT_DISPLAY, anchor: align }));
   }
   return out.join('');
 }
@@ -1022,7 +1068,10 @@ function panelRing(b: Box, c: Ctx): string {
   out.push(glass(b.x, b.y, b.w, b.h, clamp(Math.min(b.w, b.h) * 0.06, 12, 34), { raised: true }));
   const cx = b.x + b.w / 2;
   const eye = clamp(b.h * 0.05, 11, 26);
-  out.push(text(cx, b.y + b.h * 0.13, (c.L.next ?? 'Next prayer').toUpperCase(), { size: eye, fill: c.p.textDim, weight: 700, anchor: 'middle', letter: 4 }));
+  // During the zawāl window the ring becomes a "Prohibited time" notice (warning red)
+  // that still counts down to when prayer resumes (the Dhuhr adhan).
+  const eyebrow = c.prohibited ? (c.L.prohibitedTime ?? 'Prohibited time').toUpperCase() : (c.L.next ?? 'Next prayer').toUpperCase();
+  out.push(text(cx, b.y + b.h * 0.13, eyebrow, { size: eye, fill: c.prohibited ? TICKER_RED : c.p.textDim, weight: 700, anchor: 'middle', letter: 4 }));
   // Ring — kept in the upper part of the card so the countdown below never touches it.
   const ringCy = b.y + b.h * 0.4;
   const R = Math.min(b.w * 0.3, b.h * 0.23);
@@ -1057,7 +1106,9 @@ function panelRing(b: Box, c: Ctx): string {
       out.push(text(x, numBase, segs[i].w, { size: us, fill: c.p.textDim, family: FONT_SANS, weight: 600, anchor: 'start', letter: 1 }));
       x += approxWidth(segs[i].w, us) + (i < segs.length - 1 ? numSize * 0.3 : 0);
     }
-    out.push(text(cx, numBase + us * 1.6, `UNTIL ${c.eventWord}`, { size: us, fill: c.p.textDim, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 3 }));
+    // In a prohibited window the countdown runs to the Dhuhr adhan, so name it plainly.
+    const untilWord = c.prohibited ? `UNTIL ${c.nextLabel} ${c.eventWord}`.toUpperCase() : `UNTIL ${c.eventWord}`;
+    out.push(text(cx, numBase + us * 1.6, untilWord, { size: us, fill: c.p.textDim, family: FONT_SANS, weight: 600, anchor: 'middle', letter: 3 }));
   }
   return out.join('');
 }
@@ -1095,8 +1146,13 @@ function panelTable(b: Box, m: Model, c: Ctx): string {
     out.push(text(nx, midY, en, { size: nameSize, fill: nameColor, family: FONT_SANS, weight: 700, anchor: 'start', letter: 0.3, editId: `label.${row.label}` }));
     const ar = PRAYER_LABELS.ar[row.label];
     if (ar && c.lang !== 'ar') out.push(text(nx + approxWidth(en, nameSize) + b.w * 0.02, midY, ar, { size: nameSize * 0.86, fill: hexToRgba(c.p.gold, 0.85), family: FONT_ARABIC, weight: 600, anchor: 'start' }));
-    out.push(text(colAd, midY, fmtShort(row.adhan, c.timeFormat), { size: nameSize * 0.92, fill: c.p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
-    out.push(text(colIq, midY, row.iqamah != null ? fmtShort(row.iqamah, c.timeFormat) : '—', { size: nameSize, fill: row.iqamah != null ? c.p.primarySoft : c.p.textFaint, family: FONT_DISPLAY, weight: 700, anchor: 'end' }));
+    if (row.iqamah != null) {
+      out.push(text(colAd, midY, fmtShort(row.adhan, c.timeFormat), { size: nameSize * 0.92, fill: c.p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'end' }));
+      out.push(text(colIq, midY, fmtShort(row.iqamah, c.timeFormat), { size: nameSize, fill: c.p.primarySoft, family: FONT_DISPLAY, weight: 700, anchor: 'end' }));
+    } else {
+      // Sunrise: a single time (no Iqamah), so centre it across the two time columns.
+      out.push(text((colAd + colIq) / 2, midY, fmtShort(row.adhan, c.timeFormat), { size: nameSize * 0.92, fill: c.p.textDim, family: FONT_DISPLAY, weight: 600, anchor: 'middle' }));
+    }
   });
   return out.join('');
 }
@@ -1124,21 +1180,21 @@ function jumuahBar(b: Box, m: Model, c: Ctx): string {
   const zoneX = b.x + b.w * 0.42;
   const zoneW = b.x + b.w - pad - zoneX;
   const slotW = zoneW / n;
-  const ordGap = b.w * 0.008;
   m.jumuah.forEach((t, i) => {
-    const slotMid = zoneX + slotW * (i + 0.5); // centre each "1st 1:30 PM" group in its equal
-    const ord = n === 1 ? '' : c.lang === 'en' ? (JUMUAH_ORD[i] ?? `${i + 1}th`) : `${i + 1}`; // slot → uniform spacing
+    const slotMid = zoneX + slotW * (i + 0.5); // centre each "1st 1:30 PM" group in its equal slot
+    const ord = n === 1 ? '' : c.lang === 'en' ? (JUMUAH_ORD[i] ?? `${i + 1}th`) : `${i + 1}`;
     let timeSize = clamp(b.h * 0.4, 13, 46);
     const tstr = fmtShort(t, c.timeFormat);
-    let os = clamp(timeSize * 0.48, 9, 22);
-    const groupW = () => (ord ? approxWidth(ord, os) + ordGap : 0) + approxWidth(tstr, timeSize);
-    if (groupW() > slotW * 0.92) { const k = (slotW * 0.92) / groupW(); timeSize *= k; os = clamp(timeSize * 0.48, 9, 22); }
-    let x = slotMid - groupW() / 2;
-    if (ord) {
-      out.push(text(x, midY + timeSize * 0.3, ord, { size: os, fill: c.p.goldSoft, family: FONT_SANS, weight: 700, anchor: 'start' }));
-      x += approxWidth(ord, os) + ordGap;
-    }
-    out.push(text(x, midY + timeSize * 0.34, tstr, { size: timeSize, fill: c.p.text, family: FONT_DISPLAY, weight: 700, anchor: 'start' }));
+    // The ordinal gets a FIXED-width slot + a FIXED gap before the time, so the label→time
+    // spacing is identical for 1st / 2nd / 3rd (approxWidth of the ordinal would vary it).
+    const os = () => clamp(timeSize * 0.48, 9, 22);
+    const ordBox = () => (ord ? os() * 2.3 : 0);
+    const ordGap = () => (ord ? os() * 0.55 : 0);
+    const groupW = () => ordBox() + ordGap() + approxWidth(tstr, timeSize);
+    if (groupW() > slotW * 0.94) timeSize *= (slotW * 0.94) / groupW();
+    const x = slotMid - groupW() / 2;
+    if (ord) out.push(text(x + ordBox(), midY + timeSize * 0.3, ord, { size: os(), fill: c.p.goldSoft, family: FONT_SANS, weight: 700, anchor: 'end' }));
+    out.push(text(x + ordBox() + ordGap(), midY + timeSize * 0.34, tstr, { size: timeSize, fill: c.p.text, family: FONT_DISPLAY, weight: 700, anchor: 'start' }));
   });
   return out.join('');
 }
@@ -1166,6 +1222,28 @@ function tickerBand(msg: string, now: Date, p: Palette, W: number, H: number, ba
   return out.join('');
 }
 
+/** The portrait column: brand, clock + ring side by side, the prayer table, and the
+ *  Jumu'ah bar — stacked top to bottom. Used for portrait screens AND as the left
+ *  column of the landscape slideshow (it's exactly the right shape for that). */
+function portraitStack(a: Box, m: Model, c: Ctx): string {
+  const out: string[] = [];
+  const gap = Math.min(a.w, a.h) * 0.022;
+  const jbH = m.jumuah.length ? clamp(a.h * 0.09, 40, 96) : 0;
+  const bodyBottom = a.y + a.h - (jbH ? jbH + gap : 0);
+  let y = a.y;
+  const hH = a.h * 0.08;
+  out.push(panelHeader({ x: a.x, y, w: a.w, h: hH }, c));
+  y += hH + gap;
+  const rowH = a.h * 0.26;
+  const half = (a.w - gap) / 2;
+  out.push(panelClock({ x: a.x, y, w: half, h: rowH }, c, 'start'));
+  out.push(panelRing({ x: a.x + half + gap, y, w: half, h: rowH }, c));
+  y += rowH + gap;
+  out.push(panelTable({ x: a.x, y, w: a.w, h: bodyBottom - y }, m, c));
+  if (jbH) out.push(jumuahBar({ x: a.x, y: a.y + a.h - jbH, w: a.w, h: jbH }, m, c));
+  return out.join('');
+}
+
 /** The one on-screen design: brand top-left, clock top-right, the NEXT-PRAYER ring
  *  on the left, the prayer table on the right, and a Jumu'ah bar across the bottom.
  *  Portrait stacks the same widgets top-to-bottom. */
@@ -1174,22 +1252,9 @@ function layoutReference(a: Box, m: Model, c: Ctx): string {
   const gap = Math.min(a.w, a.h) * 0.022;
   const jbH = m.jumuah.length ? clamp(a.h * 0.11, 42, 110) : 0;
   const bodyBottom = a.y + a.h - (jbH ? jbH + gap : 0);
-  if (a.w < a.h) {
-    // Portrait: header on top; the clock and the countdown ring share ONE row side by
-    // side; the prayer table fills the rest (taller); Jumu'ah bar along the bottom.
-    let y = a.y;
-    const hH = a.h * 0.08;
-    out.push(panelHeader({ x: a.x, y, w: a.w, h: hH }, c));
-    y += hH + gap;
-    const rowH = a.h * 0.26;
-    const half = (a.w - gap) / 2;
-    out.push(panelClock({ x: a.x, y, w: half, h: rowH }, c, 'start'));
-    out.push(panelRing({ x: a.x + half + gap, y, w: half, h: rowH }, c));
-    y += rowH + gap;
-    out.push(panelTable({ x: a.x, y, w: a.w, h: bodyBottom - y }, m, c));
-    if (jbH) out.push(jumuahBar({ x: a.x, y: a.y + a.h - jbH, w: a.w, h: jbH }, m, c));
-    return out.join('');
-  }
+  // Portrait stacks the same widgets top-to-bottom (also reused as the left column of
+  // the landscape slideshow).
+  if (a.w < a.h) return portraitStack(a, m, c);
   // Landscape: two rows of two cards (top: brand + clock, middle: ring + table).
   const topH = (bodyBottom - a.y) * 0.26;
   const midY = a.y + topH + gap;
@@ -1207,21 +1272,32 @@ function layoutReference(a: Box, m: Model, c: Ctx): string {
   return out.join('');
 }
 
-/** Announcement layout: the cycling image fills the top (shown sharp, contained, no
- *  crop) and — just like portrait mode — the clock sits bottom-left with the NEXT-PRAYER
- *  ring in a widget right next to it. */
-function announcementView(a: Box, c: Ctx, image: string): string {
+/** Announcement (slideshow) layout. Landscape: the full portrait column on the LEFT
+ *  (brand, clock+ring, table, Jumu'ah) with the cycling image filling the RIGHT.
+ *  Portrait: the image on top with the clock + ring side by side beneath it. */
+function announcementView(a: Box, m: Model, c: Ctx, image: string): string {
   const out: string[] = [];
   const gap = Math.min(a.w, a.h) * 0.02;
-  // A bottom row holds the clock + ring side by side; make it tall enough that the ring
-  // reads well, and give the image everything above it.
-  const rowH = clamp(a.h * 0.32, 150, 340);
+
+  function drawImage(x: number, y: number, w: number, h: number): void {
+    const r = clamp(Math.min(w, h) * 0.03, 10, 28);
+    out.push(glass(x, y, w, h, r, { raised: true }));
+    out.push(`<clipPath id="annclip"><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}"/></clipPath>`);
+    out.push(`<image href="${image}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" preserveAspectRatio="xMidYMid meet" clip-path="url(#annclip)"/>`);
+  }
+
+  if (a.w >= a.h) {
+    // Landscape: the whole portrait layout as a left column, image fills the right.
+    const colW = clamp(a.w * 0.4, 360, 900);
+    out.push(portraitStack({ x: a.x, y: a.y, w: colW, h: a.h }, m, c));
+    const ix = a.x + colW + gap;
+    drawImage(ix, a.y, a.x + a.w - ix, a.h);
+    return out.join('');
+  }
+  // Portrait: image on top, clock + ring side by side beneath.
+  const rowH = clamp(a.h * 0.3, 150, 340);
   const imgH = a.h - rowH - gap;
-  const r = clamp(Math.min(a.w, imgH) * 0.03, 10, 28);
-  // Image contained (no crop) in the top area, letterboxed on a soft glass panel.
-  out.push(glass(a.x, a.y, a.w, imgH, r, { raised: true }));
-  out.push(`<clipPath id="annclip"><rect x="${a.x.toFixed(1)}" y="${a.y.toFixed(1)}" width="${a.w.toFixed(1)}" height="${imgH.toFixed(1)}" rx="${r.toFixed(1)}" ry="${r.toFixed(1)}"/></clipPath>`);
-  out.push(`<image href="${image}" x="${a.x.toFixed(1)}" y="${a.y.toFixed(1)}" width="${a.w.toFixed(1)}" height="${imgH.toFixed(1)}" preserveAspectRatio="xMidYMid meet" clip-path="url(#annclip)"/>`);
+  drawImage(a.x, a.y, a.w, imgH);
   const by = a.y + imgH + gap;
   const half = (a.w - gap) / 2;
   out.push(panelClock({ x: a.x, y: by, w: half, h: rowH }, c, 'start'));
@@ -1276,13 +1352,12 @@ function wrapLines(s: string, size: number, maxW: number, maxLines = 6): string[
 
 /** A full-screen takeover that suppresses the normal layout (and the ffmpeg ticker). */
 type Overlay =
-  | { kind: 'prohibited'; secs: number }
   | { kind: 'iqamah'; secs: number; key: string }
   | { kind: 'hadith'; item: HadithItem };
 
 /** The zawāl (pre-Dhuhr) prohibited-to-pray window, if it is active now — its end (the
- *  Dhuhr Adhan) is when prayer is allowed again. Shared by the full-screen overlay and
- *  the bottom red ticker so both cover the exact same window. */
+ *  Dhuhr Adhan) is when prayer is allowed again. Shared by the ring notice and the
+ *  bottom red ticker so both cover the exact same window. */
 function prohibitedWindow(tt: Timetable, m: Model, nowHours: number): { secsLeft: number } | null {
   const pn = tt.prohibitedNotice;
   if (!pn?.enabled) return null;
@@ -1300,12 +1375,8 @@ function prohibitedMessage(tt: Timetable, m: Model): string {
 /** Which full-screen overlay (if any) is active right now. Precedence: the zawāl
  *  notice, then the pre-Iqāmah countdown, then the during-salah hadith. */
 function activeOverlay(tt: Timetable, m: Model, nowHours: number, now: Date): Overlay | null {
-  // 1) Prohibited (zawāl) window before the Dhuhr Adhan — full-screen ONLY when NOT in
-  //    ticker mode (ticker mode shows a red bottom scroll instead; see activeTicker).
-  if (tt.prohibitedNotice?.enabled && !tt.prohibitedNotice.ticker) {
-    const pw = prohibitedWindow(tt, m, nowHours);
-    if (pw) return { kind: 'prohibited', secs: pw.secsLeft };
-  }
+  // (The zawāl prohibited notice is no longer a full-screen takeover — it lives in the
+  //  next-prayer ring as a "Prohibited time" countdown; see panelRing / prohibitedRing.)
   // 2) Full-screen countdown for the last minutes before any Iqāmah.
   const ic = tt.iqamahCountdown;
   if (ic?.enabled) {
@@ -1357,7 +1428,9 @@ function salahHadithView(item: HadithItem, now: Date, clock: ClockText, p: Palet
   // Autofit: shrink the font until the wrapped text fits the card, so a long hadith
   // never overflows the box. Arabic gets a slightly tighter width budget + taller
   // line-height (it sits taller and connects), and the Arabic font stack.
-  const family = isArabic ? FONT_ARABIC : FONT_DISPLAY;
+  // Always render the hadith (Arabic AND English) in Amiri so the card uses ONE typeface —
+  // Amiri has full Latin, so the English no longer mixes Amiri + Noto Sans.
+  const family = FONT_ARABIC;
   const maxW = cardW * (isArabic ? 0.78 : 0.86);
   const maxH = cardH * 0.74;
   const lineFactor = isArabic ? 1.75 : 1.4;
@@ -1393,33 +1466,6 @@ function iqamahCountdownView(secsLeft: number, prayerKey: string, p: Palette, L:
   out.push(text(cx, H * 0.34, `${pname} ${(L.iqamah ?? 'Iqamah').toUpperCase()} IN`, { size: clamp(W * 0.02, 18, 44), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 4 }));
   out.push(text(cx, H * 0.6, counter, { size: clamp(W * 0.16, 90, 360), fill: p.light ? p.text : 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
   out.push(text(cx, H * 0.74, 'Please line up for prayer', { size: clamp(W * 0.016, 14, 30), fill: p.textDim, anchor: 'middle' }));
-  return out.join('');
-}
-
-/** Full-screen "prohibited time" (zawāl) notice counting down to the Dhuhr Adhan. */
-function prohibitedView(secsLeft: number, p: Palette, L: Record<string, string>, W: number, H: number): string {
-  const out: string[] = [];
-  out.push(rect(0, 0, W, H, 0, 'rgba(0,0,0,0.66)'));
-  const cx = W / 2;
-  const mm = Math.floor(secsLeft / 60);
-  const ss = Math.floor(secsLeft % 60);
-  const counter = `${pad2(mm)}:${pad2(ss)}`;
-  out.push(text(cx, H * 0.3, 'PROHIBITED TIME', { size: clamp(W * 0.022, 20, 48), fill: p.gold, weight: 800, anchor: 'middle', letter: 5 }));
-  const lines = wrapLines(
-    'This is the time of zawāl, when the sun is at its zenith. Voluntary prayer is discouraged until the sun has passed.',
-    clamp(W * 0.018, 16, 32),
-    W * 0.72,
-    4,
-  );
-  let ly = H * 0.42;
-  const fs = clamp(W * 0.018, 16, 32);
-  for (const ln of lines) {
-    out.push(text(cx, ly, ln, { size: fs, fill: p.text, anchor: 'middle' }));
-    ly += fs * 1.45;
-  }
-  const dhuhr = (L.dhuhr ?? 'Dhuhr').toUpperCase();
-  out.push(text(cx, H * 0.66, `${dhuhr} ${(L.athan ?? 'Adhan').toUpperCase()} IN`, { size: clamp(W * 0.014, 13, 28), fill: p.primarySoft, weight: 700, anchor: 'middle', letter: 3 }));
-  out.push(text(cx, H * 0.78, counter, { size: clamp(W * 0.09, 60, 200), fill: p.light ? p.text : 'url(#clockg)', family: FONT_DISPLAY, weight: 700, anchor: 'middle', blink: true }));
   return out.join('');
 }
 
@@ -1526,6 +1572,9 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
   // Ticker-mode prohibited window shows a red message that overrides the normal ticker.
   const prohibitedTickerOn = !!tt.prohibitedNotice?.ticker && !!prohibitedWindow(tt, m, nowHours);
   const tickerText = prohibitedTickerOn ? prohibitedMessage(tt, m) : activeTickerText(tt, m.parts);
+  // Non-ticker prohibited window → the next-prayer ring reframes as a "Prohibited time"
+  // notice (no more full-screen takeover), counting down to the Dhuhr adhan.
+  const prohibitedRing = !!tt.prohibitedNotice?.enabled && !tt.prohibitedNotice.ticker && !!prohibitedWindow(tt, m, nowHours);
 
   const P = Math.round(Math.min(W, H) * 0.05);
   const cel = celestialPos(m.times, nowHours, W, H, P);
@@ -1562,8 +1611,7 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     // Full-screen overlays always dim to a dark scrim, so use light text even on a light
     // theme (dark-on-dark would be unreadable).
     const pS = p.light ? { ...p, text: '#f2f6f3', textDim: '#c8d3cc', textFaint: '#96a69d' } : p;
-    if (overlay.kind === 'prohibited') out.push(prohibitedView(overlay.secs, pS, L, W, H));
-    else if (overlay.kind === 'iqamah') out.push(iqamahCountdownView(overlay.secs, overlay.key, pS, L, W, H));
+    if (overlay.kind === 'iqamah') out.push(iqamahCountdownView(overlay.secs, overlay.key, pS, L, W, H));
     else out.push(salahHadithView(overlay.item, now, clock, pS, W, H));
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
   }
@@ -1594,11 +1642,12 @@ function build(tt: Timetable, now: Date, opts: RenderOpts): string {
     showName: tt.showName !== false,
     showDates: tt.showDates,
     showCountdown: tt.showCountdown,
+    prohibited: prohibitedRing,
   };
 
   if (opts.announcement) {
     // Slideshow: the timetable becomes a left sidebar, the image fills the right.
-    out.push(announcementView(area, ctx, opts.announcement));
+    out.push(announcementView(area, m, ctx, opts.announcement));
   } else {
     out.push(layoutReference(area, m, ctx));
   }

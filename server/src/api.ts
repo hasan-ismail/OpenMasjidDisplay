@@ -33,6 +33,7 @@ import {
   uploadFilePath,
   isAllowedImageMime,
   copyAsset,
+  logoDataUri,
 } from './render/background';
 import { renderPreviewPng, renderPreviewMeta } from './render/renderPool';
 import { probeSource } from './render/renderer';
@@ -242,7 +243,10 @@ export function createApi(deps: Deps) {
           res.end(JSON.stringify({ app: WIDGET_APP_MARKER, ...data }));
           return;
         }
-        const html = renderWidgetHtml(data, `${pathname}.json`);
+        // Use the masjid's uploaded logo (embedded as a data URI so the public widget
+        // needs no separate, auth-gated asset request); falls back to the built-in mark.
+        const widgetLogo = tt.logoImage ? logoDataUri(tt.logoImage) : null;
+        const html = renderWidgetHtml(data, `${pathname}.json`, widgetLogo);
         // Explicitly allow embedding in a masjid's own site (the widget is meant to be framed).
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',

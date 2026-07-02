@@ -52,7 +52,7 @@ export interface TickerSpec {
 // Ticker cadence: 20 fps (smooth, still light on a 2-core box — the heavy SVG render
 // stays at 1 fps on the worker; ffmpeg just duplicates frames and animates the text).
 // Quantising the scroll to a whole number of pixels PER FRAME is what removes judder.
-const TICKER_FPS = 30;
+const TICKER_FPS = 20;
 /** Rasterise the timetable at a CAPPED resolution and let ffmpeg upscale to the
  *  output. The heavy per-second work is the resvg render; capping it (a 720p frame is
  *  ~2.25× cheaper than 1080p) keeps every render well under its 1-second slot even
@@ -60,7 +60,7 @@ const TICKER_FPS = 30;
  *  second. Crucially the upscale is a `scale` filter set ONCE at spawn, so the layout
  *  carousel (which only changes SVG content, not ffmpeg args) still never respawns
  *  ffmpeg → the decoder never reconnects. Output ≤ 720p renders 1:1 (no upscale). */
-const RENDER_CAP = 1600; // longest side of the rasterised frame (crisper 1080p than 1280, still well under the 1 s render budget)
+const RENDER_CAP = 1280; // longest side of the rasterised frame (keeps the per-second render cheap so the ticker + countdown never stutter on a 2-core box)
 export function renderDimsFor(out: Dims): Dims {
   const longest = Math.max(out.width, out.height);
   if (longest <= RENDER_CAP) return out;

@@ -713,17 +713,17 @@ export function TimetableEditor({ state, tt, onClose, onSaved, fullPage }: { sta
         <div className="card section">
           <h3 className="section-title">Prohibited time notice</h3>
           <div className="toggle-row row-between" style={{ marginBlockEnd: '0.7rem' }}>
-            <span className="label" style={{ margin: 0 }}>Show a full-screen notice before Dhuhr (zawāl / sun at its zenith)</span>
+            <span className="label" style={{ margin: 0 }}>Show a prohibited-time notice before Dhuhr (zawāl / sun at its zenith)</span>
             <Toggle checked={pn.enabled} onChange={(v) => setPn({ enabled: v })} label="Show the prohibited-time notice" />
           </div>
           {pn.enabled && (
             <>
-              <Field label="Show for (minutes before the Dhuhr Adhan)" hint="A notice appears this many minutes before Dhuhr, when voluntary prayer is discouraged.">
+              <Field label="Show for (minutes before the Dhuhr Adhan)" hint="During this window the next-prayer ring becomes a “Prohibited time” notice counting down to the Dhuhr Adhan, when prayer is allowed again.">
                 <input className="input" type="number" min={1} max={45} value={pn.minutes} onChange={(e) => setPn({ minutes: Number(e.target.value) })} />
               </Field>
               <div className="toggle-row row-between" style={{ marginBlockStart: '0.7rem' }}>
                 <span className="label" style={{ margin: 0 }}>
-                  Show as a red scroll message at the bottom <span className="hint">— instead of the full-screen notice; overrides any ticker for the whole window</span>
+                  Show as a red scroll message at the bottom <span className="hint">— instead of the ring notice; overrides any ticker for the whole window</span>
                 </span>
                 <Toggle checked={!!pn.ticker} onChange={(v) => setPn({ ticker: v })} label="Show as a bottom scroll message" />
               </div>
